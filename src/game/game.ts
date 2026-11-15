@@ -85,6 +85,7 @@ export interface GameDebug {
   restart(): void;
   recenter(): void;
   reveal(): void;
+  simulateTrackingLoss(seconds: number): void;
   probe(level: number): unknown;
 }
 
@@ -1063,6 +1064,9 @@ export class LanternfolkSystem extends createSystem({}) {
       },
       recenter() {
         self.placeIsland(false);
+      },
+      simulateTrackingLoss(seconds: number) {
+        self.hands.suppressFor = seconds;
       },
       reveal() {
         self.placeIsland(false);

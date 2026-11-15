@@ -75,6 +75,7 @@ const PERSONALITIES: Personality[] = [
 ];
 
 const WALK_SPEED = 0.042;
+const FOLK_SCALE = 1.25;
 const BRIDGE_SPEED = 0.036;
 /** Hands closer than this get noticed (metres). */
 const NOTICE_RADIUS = 0.2;
@@ -139,6 +140,8 @@ export class Folk {
   constructor(readonly plan: FolkPlan, parent: Object3D, private events: FolkEvents) {
     const m = folkMesh(plan.tint);
     this.root = m.root;
+    // Slightly larger than "true" scale so the spirits read clearly at arm's length.
+    this.root.scale.setScalar(FOLK_SCALE);
     this.body = m.body;
     this.lanternMat = m.lanternMat;
     this.glow = m.glow;
@@ -245,7 +248,7 @@ export class Folk {
     this.stateTime += dt;
     copyV3(this.prev, this.pos);
     this.touchPoint.x = this.pos.x;
-    this.touchPoint.y = this.pos.y + 0.022;
+    this.touchPoint.y = this.pos.y + 0.022 * FOLK_SCALE;
     this.touchPoint.z = this.pos.z;
 
     switch (this.state) {

@@ -36,7 +36,19 @@ export class HandTracker {
 
   constructor(private world: World) {}
 
+  /** Dev/test hook: behave as if tracking were lost for `seconds`. */
+  suppressFor = 0;
+
   update(island: Object3D, dt: number) {
+    if (this.suppressFor > 0) {
+      this.suppressFor -= dt;
+      this.hands[0].present = false;
+      this.hands[1].present = false;
+      this.hands[0].pinching = false;
+      this.hands[1].pinching = false;
+      this.lostFor += dt;
+      return;
+    }
     const frame = this.world.xrFrame;
     const ref = this.world.xrReferenceSpace;
     const session = this.world.xrSession;

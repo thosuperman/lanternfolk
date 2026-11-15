@@ -23,6 +23,7 @@ export function setupLanding(world: World, onUserGesture: () => void) {
           button.disabled = true;
           setStatus('Immersive VR is not available here. Open this page in the Meta Quest Browser to play.');
         } else {
+          button.disabled = false;
           setStatus('Hands only — put your controllers down. Best played seated.');
         }
       })
