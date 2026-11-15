@@ -453,7 +453,7 @@ export function greatTree() {
   }
   const group = new Group();
   group.add(new Mesh(trunk.build(), flatMaterial()));
-  const canopyMat = flatMaterial(0xffd27a, 0);
+  const canopyMat = flatMaterial(0x9fe0c0, 0);
   const canopyMesh = new Mesh(canopy.build(), canopyMat);
   group.add(canopyMesh);
   // socket where the star will rest

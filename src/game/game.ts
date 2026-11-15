@@ -62,7 +62,7 @@ type Phase =
   | 'ending';
 
 const DORMANT = new Color(0.34, 0.38, 0.62);
-const ALIVE = new Color(1, 1, 1);
+const ALIVE = new Color(0.86, 0.9, 0.95);
 
 interface Zone {
   plan: LevelPlan;
@@ -375,9 +375,18 @@ export class LanternfolkSystem extends createSystem({}) {
     }
     if (this.pendingPlace > 0) {
       this.pendingPlace--;
-      if (this.pendingPlace === 0) this.placeIsland(false);
+      if (this.pendingPlace === 0) {
+        this.placeIsland(false);
+        this.reveal = 0.0001; // cold-open: the grove rises into place
+        this.watchRecentre();
+      }
+    }
+    if (this.recentreRequested) {
+      this.recentreRequested = false;
+      this.placeIsland(false);
     }
     if (this.paused) return;
+    if (!inXR) this.desktopPreview(time);
     this.phaseTime += dt;
     this.hands.update(this.island, dt);
     const hands = this.hands.hands;
@@ -399,21 +408,48 @@ export class LanternfolkSystem extends createSystem({}) {
     this.updateStar(dt);
     this.updateHints(dt, time);
     this.updateBloom(dt, time);
+    if (!inXR) this.label.hide();
     this.label.update(dt);
     this.motes.update(dt, time);
     this.updateNoHands(inXR);
   }
   private pendingPlace = 0;
+
+  /** Outside VR: a slow orbit around the grove as a living title screen. */
+  private desktopPreview(time: number) {
+    const c = this.island.parent!.position;
+    const a = time * 0.12;
+    this.camera.position.set(c.x + Math.sin(a) * 0.95, c.y + 0.42, c.z + Math.cos(a) * 0.95);
+    this.camera.lookAt(c.x, c.y - 0.1, c.z);
+  }
+  private reveal = 1;
+  private recentreRequested = false;
+  private watchedSpace: XRReferenceSpace | null = null;
+
+  /** Re-place the grove when the player recentres their headset. */
+  private watchRecentre() {
+    const space = this.world.xrReferenceSpace;
+    if (!space || space === this.watchedSpace) return;
+    this.watchedSpace = space;
+    space.addEventListener('reset', () => (this.recentreRequested = true));
+  }
   private stockHandTimer = 0;
 
   /** Our moonlit hand replaces the SDK's outline hand (which also occludes it). */
   private hideStockHands(dt: number) {
-    this.stockHandTimer -= dt;
-    if (this.stockHandTimer > 0) return;
-    this.stockHandTimer = 0.5;
-    const hv = this.input.xr.visualAdapters?.hand;
-    hv?.left?.toggleVisual(false);
-    hv?.right?.toggleVisual(false);
+    void dt;
+    const hv = this.input.xr.visualAdapters?.hand as
+      | Record<'left' | 'right', { toggleVisual(v: boolean): void; visual?: { model?: { visible: boolean } } }>
+      | undefined;
+    if (!hv) return;
+    for (const side of ['left', 'right'] as const) {
+      const a = hv[side];
+      if (!a) continue;
+      if (this.stockHandTimer <= 0) a.toggleVisual(false);
+      const model = a.visual?.model;
+      if (model && model.visible) model.visible = false;
+    }
+    this.stockHandTimer = this.stockHandTimer <= 0 ? 1 : this.stockHandTimer - dt;
   }
 
   private updateIslandTransform(dt: number) {
@@ -426,7 +462,19 @@ export class LanternfolkSystem extends createSystem({}) {
     parent.rotation.y = this.yawFacing;
     this.island.rotation.y = this.yaw;
     // Gentle float.
-    this.island.position.y = Math.sin(performance.now() / 1000 * 0.6) * 0.002;
+    let rise = 0;
+    if (this.reveal < 1) {
+      const before = this.reveal;
+      this.reveal = Math.min(1, this.reveal + dt / 2.8);
+      const e = smoothstep(this.reveal);
+      rise = (1 - e) * -0.22;
+      this.island.scale.setScalar(0.75 + 0.25 * e);
+      if (before < 0.55 && this.reveal >= 0.55) {
+        this.motes.burst(0, 0.05, 0, 40, 0.3, 0.06);
+        sound.bloom();
+      }
+    }
+    this.island.position.y = rise + Math.sin((performance.now() / 1000) * 0.6) * 0.002;
     void dt;
   }
 
@@ -435,7 +483,9 @@ export class LanternfolkSystem extends createSystem({}) {
     const zone = this.zones[this.level];
     switch (this.phase) {
       case 'intro': {
-        if (this.level === 0) this.label.show('Lanternfolk', plan.intro[1]);
+        if (this.reveal < 0.9) {
+          this.label.hide();
+        } else if (this.level === 0) this.label.show('Lanternfolk', plan.intro[1]);
         else this.label.show(plan.intro[0], plan.intro[1]);
         this.positionLabel(plan.label);
         break;
@@ -493,7 +543,7 @@ export class LanternfolkSystem extends createSystem({}) {
       case 'finale': {
         const u = Math.min(1, this.phaseTime / 4);
         this.tree.canopyMat.emissiveIntensity = u * 0.32;
-        this.treeLight.intensity = u * 1.2;
+        this.treeLight.intensity = u * 0.55;
         this.treeLanterns.forEach((g, i) => {
           const k = smoothstep((this.phaseTime - 0.4 * i) / 1.2);
           (g.material as SpriteMaterial).opacity = k * (0.8 + 0.2 * Math.sin(this.phaseTime * 3 + i));
@@ -733,7 +783,7 @@ export class LanternfolkSystem extends createSystem({}) {
     const all = this.zones.reduce((a, z) => a + z.bloom, 0) / this.zones.length;
     const centre = this.zones[0].mat.userData.centre as MeshLambertMaterial;
     centre.color.copy(DORMANT).lerp(ALIVE, 0.35 + 0.65 * all);
-    this.hemi.intensity = 1.35 + all * 0.6;
+    this.hemi.intensity = 1.35 + all * 0.25;
     this.skyStars.starsMat.opacity = 0.9 - all * 0.3;
   }
 
