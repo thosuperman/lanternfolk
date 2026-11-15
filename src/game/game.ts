@@ -77,11 +77,14 @@ interface Zone {
 export interface GameDebug {
   phase: Phase;
   level: number;
+  musicMuted: boolean;
+  rescued: number;
   folk: { state: string; help: string | null; x: number; y: number; z: number }[];
   targets: Record<string, [number, number, number]>;
   skipTo(level: number): void;
   restart(): void;
   recenter(): void;
+  reveal(): void;
   probe(level: number): unknown;
 }
 
@@ -227,6 +230,11 @@ export class LanternfolkSystem extends createSystem({}) {
     this.replay.group.scale.setScalar(2.2);
     this.island.add(this.replay.group);
 
+    this.bell = pathLantern();
+    this.bell.group.scale.setScalar(1.4);
+    this.island.add(this.bell.group);
+    this.bellLabel = new Label(0.14, 4);
+    this.island.add(this.bellLabel.sprite);
     this.label = new Label(0.34, 4);
     this.island.add(this.label.sprite);
     this.handHint = handHintMesh();
@@ -252,13 +260,124 @@ export class LanternfolkSystem extends createSystem({}) {
       step: (f) => sound.step(this.pan(f.position)),
       hop: (f) => sound.hop(this.pan(f.position)),
       worry: (f) => sound.call(this.pan(f.position)),
+      cheer: (f) => sound.cheer(this.pan(f.position)),
       arrive: (f) => {
         sound.arrive();
         this.motes.burst(f.position.x, f.position.y + 0.03, f.position.z, 24, 0.03, 0.07);
         for (const l of zone.lanterns) l.orbMat.color.setHex(f.plan.tint);
+        this.onRescue(f);
         if (zone.folk.every((x) => x.isSeated)) this.completeLevel();
       },
     };
+  }
+
+  /** Order in which spirits came home (they remember, and so does the grove). */
+  private rescued: Folk[] = [];
+
+  /** Every rescue visibly and audibly warms the grove. */
+  private onRescue(f: Folk) {
+    this.rescued.push(f);
+    const n = this.rescued.length;
+    sound.setWarmth(n >= 4 ? 3 : n);
+    // The friends already home celebrate the newcomer, one after another.
+    this.rescued.forEach((other, i) => {
+      if (other !== f) this.later(0.35 + i * 0.25, () => other.cheer());
+    });
+    // A branch lantern lights up for each spirit, in its own colour.
+    const lamp = this.treeLanterns[Math.min(n - 1, this.treeLanterns.length - 1)];
+    if (lamp) {
+      (lamp.material as SpriteMaterial).color.setHex(f.plan.tint);
+      lamp.userData.lit = 1;
+    }
+  }
+
+  private timers: { at: number; fn: () => void }[] = [];
+  private clock = 0;
+  private later(seconds: number, fn: () => void) {
+    this.timers.push({ at: this.clock + seconds, fn });
+  }
+  private runTimers(dt: number) {
+    this.clock += dt;
+    for (let i = this.timers.length - 1; i >= 0; i--) {
+      if (this.timers[i].at <= this.clock) {
+        const t = this.timers[i];
+        this.timers.splice(i, 1);
+        t.fn();
+      }
+    }
+  }
+
+  /** More fireflies drift up as more spirits come home. */
+  private updateFireflies(dt: number) {
+    const n = this.rescued.length;
+    if (n === 0 || this.phase === 'finale') return;
+    if (Math.random() < dt * n * 0.9) {
+      const a = Math.random() * Math.PI * 2;
+      const d = 0.05 + Math.random() * 0.3;
+      this.motes.burst(Math.cos(a) * d, -0.02 + Math.random() * 0.05, Math.sin(a) * d, 1, 0.01, 0.025);
+    }
+    // Lit branch lanterns breathe softly.
+    this.treeLanterns.forEach((g, i) => {
+      if (!g.userData.lit || this.phase === 'finale' || this.phase === 'ending') return;
+      (g.material as SpriteMaterial).opacity = 0.75 + 0.2 * Math.sin(this.clock * 2 + i);
+    });
+    this.tree.canopyMat.emissiveIntensity = Math.max(this.tree.canopyMat.emissiveIntensity, n * 0.04);
+  }
+
+  /** Viewer position and "who to watch" for the spirits' acting layer. */
+  private updateCommunity() {
+    this.camera.getWorldPosition(this.tmp);
+    this.island.worldToLocal(this.tmp);
+    const zone = this.zones[this.level];
+    const active = zone?.folk.find((f) => f.isAwake && !f.isSeated) ?? null;
+    for (const z of this.zones) {
+      for (const f of z.folk) {
+        f.viewer.x = this.tmp.x;
+        f.viewer.y = this.tmp.y;
+        f.viewer.z = this.tmp.z;
+        f.watch = active ? active.position : null;
+      }
+    }
+  }
+
+  /* ---- hands-only music toggle: a small moon-bell beside the grove ---- */
+  private bell!: ReturnType<typeof pathLantern>;
+  private bellLocal = v3();
+  private bellArmed = true;
+  private bellLabel!: Label;
+  private bellLabelTimer = 0;
+
+  private updateMusicBell(dt: number) {
+    // Fixed to the left-front of the grove (does not spin with level changes).
+    const yaw = this.yaw;
+    const bx = -0.2;
+    const bz = 0.17;
+    const c = Math.cos(-yaw);
+    const sn = Math.sin(-yaw);
+    this.bellLocal.x = bx * c + bz * sn;
+    this.bellLocal.z = -bx * sn + bz * c;
+    this.bellLocal.y = 0.05 + Math.sin(this.clock * 1.5) * 0.003;
+    this.bell.group.position.set(this.bellLocal.x, this.bellLocal.y - 0.029 * 1.4, this.bellLocal.z);
+    const on = !sound.musicMuted;
+    this.bell.orbMat.color.setHex(on ? 0xffd27a : 0x4b5285);
+    (this.bell.glow.material as SpriteMaterial).opacity = on ? 0.55 + 0.15 * Math.sin(this.clock * 2) : 0.12;
+    const poking = isPoking(this.hands.hands, this.bellLocal);
+    if (poking && this.bellArmed && this.phase !== 'boot') {
+      this.bellArmed = false;
+      sound.unlock();
+      sound.setMusicMuted(on);
+      sound.pickup();
+      this.bellLabel.show(on ? 'Music off' : 'Music on', '');
+      this.bellLabelTimer = 1.6;
+    } else if (!poking) {
+      let far = true;
+      for (const h of this.hands.hands) if (h.present && dist3(h.indexTip, this.bellLocal) < 0.07) far = false;
+      if (far) this.bellArmed = true;
+    }
+    this.bellLabelTimer -= dt;
+    if (this.bellLabelTimer <= 0) this.bellLabel.hide();
+    this.bellLabel.sprite.position.set(this.bellLocal.x, this.bellLocal.y + 0.05, this.bellLocal.z);
+    this.bellLabel.update(dt);
   }
 
   /** Stereo pan from island-local x relative to the viewer. */
@@ -319,7 +438,14 @@ export class LanternfolkSystem extends createSystem({}) {
     this.replay.group.visible = false;
     this.tree.canopyMat.emissiveIntensity = 0;
     this.treeLight.intensity = 0;
-    this.treeLanterns.forEach((g) => ((g.material as SpriteMaterial).opacity = 0));
+    this.treeLanterns.forEach((g) => {
+      (g.material as SpriteMaterial).opacity = 0;
+      (g.material as SpriteMaterial).color.setHex(0xffe9a8);
+      g.userData.lit = 0;
+    });
+    this.rescued = [];
+    this.timers = [];
+    sound.setWarmth(0);
     this.yaw = -LEVELS[0].angle;
     this.setPhase('intro');
     sound.resetSteps();
@@ -353,7 +479,8 @@ export class LanternfolkSystem extends createSystem({}) {
     this.yawTo = -LEVELS[i].angle;
     // always rotate the same way (counter-clockwise reveal)
     while (this.yawTo > this.yawFrom) this.yawTo -= Math.PI * 2;
-    this.placeIsland(true);
+    // The grove stays where it was placed (XR start or headset recentre): re-placing
+    // at every level would follow wherever the player happened to glance.
     this.setPhase('transition');
   }
 
@@ -378,6 +505,7 @@ export class LanternfolkSystem extends createSystem({}) {
       if (this.pendingPlace === 0) {
         this.placeIsland(false);
         this.reveal = 0.0001; // cold-open: the grove rises into place
+        this.titleTime = 0;
         this.watchRecentre();
       }
     }
@@ -403,7 +531,11 @@ export class LanternfolkSystem extends createSystem({}) {
     this.highlight[1] = carrying || this.leafHeld === 1 || this.starHeld === 1;
     this.handVisual.update(hands, dt, this.highlight);
     this.hideStockHands(dt);
+    this.runTimers(dt);
+    this.updateCommunity();
     this.updateFlow(dt);
+    this.updateMusicBell(dt);
+    this.updateFireflies(dt);
     this.updateLeaf(dt);
     this.updateStar(dt);
     this.updateHints(dt, time);
@@ -414,6 +546,7 @@ export class LanternfolkSystem extends createSystem({}) {
     this.updateNoHands(inXR);
   }
   private pendingPlace = 0;
+  private titleTime = 0;
 
   /** Outside VR: a slow orbit around the grove as a living title screen. */
   private desktopPreview(time: number) {
@@ -485,7 +618,10 @@ export class LanternfolkSystem extends createSystem({}) {
       case 'intro': {
         if (this.reveal < 0.9) {
           this.label.hide();
-        } else if (this.level === 0) this.label.show('Lanternfolk', plan.intro[1]);
+        } else if (this.level === 0) {
+          this.titleTime += 1 / 60;
+          this.label.show(this.titleTime < 4 ? 'Lanternfolk' : plan.intro[0], plan.intro[1]);
+        }
         else this.label.show(plan.intro[0], plan.intro[1]);
         this.positionLabel(plan.label);
         break;
@@ -533,31 +669,39 @@ export class LanternfolkSystem extends createSystem({}) {
           this.label.hide();
           this.setPhase('finale');
           sound.finale();
+          sound.musicFinale();
           this.zones.forEach((z) => (z.bloomTarget = 1));
+          this.startFinaleChoreography();
         } else {
-          this.label.show('One last light', 'Pinch the star and place it on top of the tree');
+          this.label.show('One last light', 'Pinch the star and set it atop the tree');
           this.positionLabel(v3(STAR_START.x, 0.2, STAR_START.z));
         }
         break;
       }
       case 'finale': {
         const u = Math.min(1, this.phaseTime / 4);
-        this.tree.canopyMat.emissiveIntensity = u * 0.32;
+        this.tree.canopyMat.emissiveIntensity = Math.max(0.16, u * 0.32);
         this.treeLight.intensity = u * 0.55;
+        // Light travels up through the branches, one lantern after another.
         this.treeLanterns.forEach((g, i) => {
-          const k = smoothstep((this.phaseTime - 0.4 * i) / 1.2);
-          (g.material as SpriteMaterial).opacity = k * (0.8 + 0.2 * Math.sin(this.phaseTime * 3 + i));
+          const k = smoothstep((this.phaseTime - 0.5 - 0.35 * i) / 0.8);
+          const m = g.material as SpriteMaterial;
+          if (k > 0 && !g.userData.lit) m.color.setHex(0xffe9a8);
+          m.opacity = Math.max(g.userData.lit ? 0.8 : 0, k * (0.8 + 0.2 * Math.sin(this.phaseTime * 3 + i)));
         });
         if (Math.random() < dt * 30) {
           const a = Math.random() * Math.PI * 2;
           const d = 0.03 + Math.random() * 0.12;
           this.motes.burst(Math.cos(a) * d, 0.12 + Math.random() * 0.12, Math.sin(a) * d, 2, 0.02, 0.05);
         }
-        if (this.phaseTime > 2.5) {
-          this.label.show('The grove is awake', 'Thank you for lending a hand');
+        if (this.phaseTime > 2.5 && this.phaseTime < 6.5) {
+          this.label.show('The grove is awake', '');
           this.positionLabel(v3(0, 0.36, 0));
+        } else if (this.phaseTime >= 6.5) {
+          this.label.show('Thank you', 'for lending a hand');
+          this.positionLabel(v3(0, 0.33, 0));
         }
-        if (this.phaseTime > 9) {
+        if (this.phaseTime > 12) {
           this.setPhase('ending');
           this.replay.group.visible = true;
         }
@@ -583,6 +727,29 @@ export class LanternfolkSystem extends createSystem({}) {
         this.tree.canopyMat.emissiveIntensity = 0.32;
         break;
       }
+    }
+  }
+
+  /** Spirits gather around the lit tree, celebrate, and the first friend says thank you. */
+  private startFinaleChoreography() {
+    this.camera.getWorldPosition(this.tmp);
+    this.island.worldToLocal(this.tmp);
+    const toViewer = Math.atan2(this.tmp.x, this.tmp.z);
+    const all = this.rescued.length ? this.rescued : this.zones.flatMap((z) => z.folk);
+    const ring = all.length;
+    all.forEach((f, i) => {
+      // Fan out in a crescent on the viewer's side of the tree.
+      const a = toViewer + (i - (ring - 1) / 2) * 0.55;
+      this.later(1.2 + i * 0.3, () => f.gatherAt(v3(Math.sin(a) * 0.075, 0, Math.cos(a) * 0.075)));
+      this.later(3.6 + i * 0.25, () => f.cheer(1.2));
+      this.later(5.4 + i * 0.25, () => f.cheer(1));
+    });
+    const first = all[0];
+    if (first) {
+      this.later(6.4, () => {
+        first.thankAt(v3(Math.sin(toViewer) * 0.115, 0, Math.cos(toViewer) * 0.115));
+        sound.wake(0);
+      });
     }
   }
 
@@ -725,7 +892,7 @@ export class LanternfolkSystem extends createSystem({}) {
             this.ring.scale.setScalar(2.2 + 0.3 * Math.sin(time * 5));
           }
         } else if (needer.help === 'bridge' || needer.help === 'lift') {
-          handTarget = 0.55;
+          handTarget = this.handNear(plan.hint, 0.09) ? 0 : 0.55;
           const from = plan.hint;
           if (plan.hintTo) {
             const u = (time * 0.45) % 1;
@@ -758,6 +925,15 @@ export class LanternfolkSystem extends createSystem({}) {
     handMat.opacity += (handTarget - handMat.opacity) * Math.min(1, dt * 4);
     this.ring.visible = ringMat.opacity > 0.01;
     this.handHint.visible = handMat.opacity > 0.01;
+  }
+
+  private handNear(p: V3, r: number) {
+    for (const h of this.hands.hands) {
+      if (!h.present) continue;
+      const j = h.joints;
+      if (Math.hypot(j[33] - p.x, j[34] - p.y, j[35] - p.z) < r) return true; // middle knuckle
+    }
+    return false;
   }
 
   private camLocal = new Vector3();
@@ -811,6 +987,12 @@ export class LanternfolkSystem extends createSystem({}) {
       get level() {
         return self.level;
       },
+      get musicMuted() {
+        return sound.musicMuted;
+      },
+      get rescued() {
+        return self.rescued.length;
+      },
       get folk() {
         return self.zones.flatMap((z) =>
           z.folk.map((f) => {
@@ -832,6 +1014,7 @@ export class LanternfolkSystem extends createSystem({}) {
         t.star = self.toWorld(self.starPos);
         t.socket = self.toWorld(SOCKET);
         t.replay = self.toWorld(self.replayPos);
+        t.bell = self.toWorld(self.bellLocal);
         return t;
       },
       skipTo(level: number) {
@@ -874,6 +1057,11 @@ export class LanternfolkSystem extends createSystem({}) {
       },
       recenter() {
         self.placeIsland(false);
+      },
+      reveal() {
+        self.placeIsland(false);
+        self.reveal = 0.0001;
+        self.titleTime = 0;
       },
     };
     (window as unknown as { lanternfolk: GameDebug }).lanternfolk = debug;

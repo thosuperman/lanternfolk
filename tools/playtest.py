@@ -86,7 +86,7 @@ def poke(target):
     seq([
         {"label": "approach", "position": P(target, dz=0.06, dy=0.03), "anchor": "index-tip", "poseId": "point", "duration": 0.7},
         {"label": "touch", "position": P(target), "anchor": "index-tip", "duration": 0.4},
-        {"label": "hold", "duration": 0.3},
+        {"label": "hold", "duration": 0.05},
         {"label": "lift", "position": P(target, dy=0.12, dz=0.08), "anchor": "index-tip", "duration": 0.5},
     ])
 
@@ -128,8 +128,16 @@ def main():
         check("L1 poke wakes folk, it walks to the gap and asks for help", True)
         shot(sp("02_wait_bridge.png"))
         h = t["hint1"]
-        seq([{"label": "bridge", "position": P(h, dy=0.0), "anchor": "grasp", "poseId": "flat",
-              "orientation": {"fingers": [-1, 0, 0], "palm": "up"}, "duration": 1.0}])
+        flat = {"fingers": [-1, 0, 0], "palm": "up"}
+        # Robustness: tracking drops while the spirit is crossing.
+        seq([{"label": "bridge", "position": P(h, dy=0.0), "anchor": "grasp", "poseId": "flat", "orientation": flat, "duration": 1.0}])
+        wait_for(lambda s: s["folk"][0]["state"] in ("bridge", "walk", "seated"), 6, "crossing")
+        cli("xr", "set-connected", payload={"device": "hand-right", "connected": False})
+        s = wait_for(lambda s: s["folk"][0]["state"] in ("wait", "walk", "seated"), 10, "safe after tracking loss")
+        check("L1 tracking lost mid-crossing: spirit ends safe (back at the edge, or hopped across)", True, s["folk"][0]["state"])
+        cli("xr", "set-connected", payload={"device": "hand-right", "connected": True})
+        if s["folk"][0]["state"] == "wait":
+            seq([{"label": "bridge-again", "position": P(h, dy=0.0), "anchor": "grasp", "poseId": "flat", "orientation": flat, "duration": 1.0}])
         time.sleep(1.2)
         shot(sp("03_on_hand.png"))
         s = wait_for(lambda s: s["folk"][0]["state"] == "seated", 20, "folk1 seated")
@@ -153,6 +161,17 @@ def main():
         ])
         s = state()
         check("L2 folk boards the palm", s["folk"][1]["state"] in ("hop-on", "ride"), s["folk"][1]["state"])
+        # Robustness: tracking lost mid-ride.
+        cli("xr", "set-connected", payload={"device": "hand-right", "connected": False})
+        s = wait_for(lambda s: s["folk"][1]["state"] in ("return", "wait"), 6, "float back on tracking loss")
+        check("L2 tracking lost mid-ride: spirit floats safely back to a pad", True, s["folk"][1]["state"])
+        cli("xr", "set-connected", payload={"device": "hand-right", "connected": True})
+        s = wait_for(lambda s: s["folk"][1]["state"] in ("wait", "hop-on", "ride"), 6, "waiting again")
+        if s["folk"][1]["state"] == "wait":
+          seq([{"label": "offer-again", "position": P(h, dy=0.02), "anchor": "grasp", "poseId": "flat",
+              "orientation": {"fingers": [-1, 0, 0], "palm": "up"}, "duration": 1.0}, {"label": "wait", "duration": 1.2}])
+        s = wait_for(lambda s: s["folk"][1]["state"] in ("hop-on", "ride"), 5, "re-board")
+        check("L2 tracking reacquired: spirit boards again", True)
         seq([{"label": "raise", "position": P(h, dy=0.09, dz=0.01), "anchor": "grasp", "duration": 1.0}])
         shot(sp("05_riding.png"))
         seq([{"label": "to-ledge", "position": P(h2, dy=0.03), "anchor": "grasp", "duration": 1.2}, {"label": "hold", "duration": 1.0}])
@@ -197,6 +216,11 @@ def main():
     ])
     wait_for(lambda s: s["phase"] in ("finale", "ending"), 6, "finale")
     check("Finale: star placed on the tree", True)
+    time.sleep(8)
+    s = state()
+    gathered = [f["state"] for f in s["folk"]]
+    check("Finale: rescued spirits gather; first friend comes to thank you",
+          all(g in ("gather", "thank") for g in gathered) and "thank" in gathered, ",".join(gathered))
     rest()
     time.sleep(3.5)
     shot(sp("09_finale.png"))
@@ -204,9 +228,17 @@ def main():
     t = ev("lanternfolk.targets")
     shot(sp("10_ending.png"))
     time.sleep(1.2)
+    # Music bell (hands-only mute toggle)
+    before = ev("lanternfolk.musicMuted")
+    poke(t["bell"])
+    time.sleep(0.4)
+    after = ev("lanternfolk.musicMuted")
+    check("Music bell toggles music with a touch", before != after, f"{before}->{after}")
+    poke(t["bell"])
+    rest()
     poke(t["replay"])
     wait_for(lambda s: s["phase"] in ("transition", "play", "intro") and s["level"] == 0, 8, "replay")
-    check("Ending: touching the lantern restarts the game", True)
+    check("Ending: touching the lantern restarts the game", ev("lanternfolk.rescued") == 0)
     rest()
 
     fails = [r for r in results if not r[1]]

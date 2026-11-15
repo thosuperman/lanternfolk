@@ -20,7 +20,7 @@ lst = os.path.join(src, "list.txt")
 open(lst, "w").write("\n".join(lines))
 subprocess.run([
     "ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", lst,
-    "-vf", "fps=30,scale=1280:720:flags=lanczos,format=yuv420p",
+    "-vf", "fps=30,scale=1920:1080:flags=lanczos,format=yuv420p",
     "-c:v", "libx264", "-preset", "medium", "-crf", "18", out,
 ], check=True)
 print(out, len(frames), "frames", f"{frames[-1]['t'] - frames[0]['t']:.1f}s")

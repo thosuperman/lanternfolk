@@ -200,8 +200,9 @@ export function stepBridge(
 ): BridgeStep {
   const L = spanLength(span);
   const here = bridgeSupport(span, s, hands);
-  const next = Math.min(L, s + Math.max(speed * dt, 0.004));
-  const ahead = bridgeSupport(span, next, hands);
+  // Probe a little ahead for support, but only travel speed * dt.
+  const next = Math.min(L, s + speed * dt);
+  const ahead = bridgeSupport(span, Math.min(L, s + Math.max(speed * dt, 0.006)), hands);
   out.onHand = s > span.groundLength && s < L - span.groundLength;
   if (ahead > -Infinity) {
     out.s = next;
@@ -215,7 +216,7 @@ export function stepBridge(
     const probe = Math.min(L, s + d);
     const y = bridgeSupport(span, probe, hands);
     if (y > -Infinity) {
-      out.s = Math.min(L, s + Math.max(speed * dt * 1.6, 0.004));
+      out.s = Math.min(L, s + speed * dt * 1.6);
       out.y = Math.max(here > -Infinity ? here : y, y) + 0.01;
       out.blocked = false;
       return out;

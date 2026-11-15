@@ -76,6 +76,20 @@ describe('stepBridge', () => {
     expect(s).toBeGreaterThanOrEqual(0.1 - 1e-4);
   });
 
+  it('crosses at walking speed, not faster (regression)', () => {
+    const hands = [none(), flatHand(0, -0.005, 0.15, false)];
+    let s = 0;
+    let frames = 0;
+    while (s < 0.1 - 1e-4 && frames < 2000) {
+      stepBridge(span, s, 0.036, 1 / 90, hands, step);
+      s = step.s;
+      frames++;
+    }
+    // ~0.1 m at 3.6 cm/s is close to 2.8 s of frames at 90 Hz.
+    expect(frames / 90).toBeGreaterThan(2.4);
+    expect(frames / 90).toBeLessThan(3.4);
+  });
+
   it('refuses a hand held far above the path', () => {
     const hands = [flatHand(0, 0.2, 0.15, false)];
     stepBridge(span, 0.012, 0.04, 0.016, hands, step);
