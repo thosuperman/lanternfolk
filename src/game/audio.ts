@@ -287,7 +287,10 @@ export class Sound {
     const s = new Sound();
     s.logging = false;
     s.attach(ctx);
-    const sorted = events.filter((e) => e.t >= t0 - 1).sort((a, b) => a.t - b.t);
+    // State cues (music start/stop, warmth, mute) from before the clip still apply;
+    // one-shot sound effects from before the clip are dropped.
+    const state = new Set(['startAmbience', 'stopAmbience', 'warmth', 'musicMuted', 'musicFinale']);
+    const sorted = events.filter((e) => state.has(e.n) || e.t >= t0 - 300).sort((a, b) => a.t - b.t);
     for (const e of sorted) {
       const at = Math.max(0, (e.t - t0) / 1000);
       if (at > seconds) break;

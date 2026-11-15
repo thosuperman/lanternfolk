@@ -17,7 +17,17 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def cli(*args, payload=None, timeout=90):
+def cli(*args, payload=None, timeout=90, tries=4):
+    for i in range(tries):
+        try:
+            return _cli(*args, payload=payload, timeout=timeout)
+        except RuntimeError as e:
+            if "queue" not in str(e) or i == tries - 1:
+                raise
+            time.sleep(0.5)
+
+
+def _cli(*args, payload=None, timeout=90):
     cmd = ["npx", "iwsdk", *args]
     if payload is not None:
         cmd += ["--input-json", json.dumps(payload)]
@@ -39,16 +49,33 @@ def cli(*args, payload=None, timeout=90):
         raise RuntimeError(out.stdout + out.stderr)
 
 
-def ev(expr):
+def ev(expr, tries=4):
+    for i in range(tries):
+        try:
+            return _ev(expr)
+        except RuntimeError as e:
+            if "queue" not in str(e) or i == tries - 1:
+                raise
+            time.sleep(0.5)
+
+
+def _ev(expr):
     env = dict(os.environ, EXPR=expr)
     out = subprocess.run(["npx", "iwsdk", "browser", "run", "tools/eval.mjs"], cwd=ROOT,
                          capture_output=True, text=True, env=env, timeout=60)
-    first = out.stdout.strip().splitlines()[0] if out.stdout.strip() else "null"
+    if not out.stdout.strip():
+        raise RuntimeError("eval failed: " + (out.stderr or "")[-400:])
+    first = out.stdout.strip().splitlines()[0]
+    if first.startswith("{") and '"ok": false' in out.stdout:
+        raise RuntimeError("eval failed: " + out.stdout[:400])
     return json.loads(first)
 
 
+SEQ_OPTS = {}
+
+
 def seq(steps, device="hand-right"):
-    r = cli("xr", "run-sequence", "--timeout", "60000", payload={"device": device, "steps": steps}, timeout=120)
+    r = cli("xr", "run-sequence", "--timeout", "60000", payload={"device": device, "steps": steps, **SEQ_OPTS}, timeout=120)
     if not r.get("ok"):
         raise RuntimeError(r.get("error", {}).get("message", json.dumps(r)[:600]))
     return r["data"]["result"]

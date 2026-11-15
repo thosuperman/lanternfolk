@@ -14,6 +14,7 @@ import {
   DodecahedronGeometry,
   Group,
   IcosahedronGeometry,
+  InstancedMesh,
   Matrix4,
   Mesh,
   MeshBasicMaterial,
@@ -374,26 +375,57 @@ export function mushrooms(spots: [number, number, number][], seed: number) {
   return g;
 }
 
-/** Flowers that pop up when an area is restored. */
-export function flowerField(spots: [number, number, number][], seed: number) {
-  const r = rng(seed);
-  const group = new Group();
-  const palette = [0xffd36e, 0xff9ec7, 0x9ee7ff, 0xffffff, 0xffb36b];
-  const geoStem = new CylinderGeometry(0.0008, 0.0008, 1, 3);
-  const geoHead = new IcosahedronGeometry(0.004, 0);
-  for (const [x, y, z] of spots) {
-    const b = new GeoBatch();
-    const h = 0.012 + r() * 0.012;
-    b.add(geoStem, 0x4f9a5a, [0, h / 2, 0], [0, 0, 0], [1, h, 1]);
-    b.add(geoHead, palette[Math.floor(r() * palette.length)], [0, h, 0], [r(), r(), 0], [1, 0.6, 1]);
-    const m = new Mesh(b.build(), new MeshBasicMaterial({ vertexColors: true }));
-    m.position.set(x, y, z);
-    m.scale.setScalar(0.0001);
-    m.userData.delay = r() * 1.2;
-    group.add(m);
+/** Flowers that pop up when an area is restored (2 instanced draw calls per field). */
+export class FlowerField {
+  readonly group = new Group();
+  private stems: InstancedMesh;
+  private heads: InstancedMesh;
+  private spots: { x: number; y: number; z: number; h: number; delay: number; rot: number }[] = [];
+  private m = new Matrix4();
+  private q = new Quaternion();
+  private p = new Vector3();
+  private s = new Vector3();
+  private last = -1;
+
+  constructor(spots: [number, number, number][], seed: number) {
+    const r = rng(seed);
+    const palette = [0xffd36e, 0xff9ec7, 0x9ee7ff, 0xffffff, 0xffb36b];
+    const stemGeo = new CylinderGeometry(0.0008, 0.0008, 1, 3);
+    stemGeo.translate(0, 0.5, 0);
+    const headGeo = new IcosahedronGeometry(0.004, 0);
+    this.stems = new InstancedMesh(stemGeo, new MeshBasicMaterial({ color: 0x4f9a5a }), spots.length);
+    this.heads = new InstancedMesh(headGeo, new MeshBasicMaterial({ color: 0xffffff }), spots.length);
+    spots.forEach(([x, y, z], i) => {
+      this.spots.push({ x, y, z, h: 0.012 + r() * 0.012, delay: r() * 1.2, rot: r() * 3 });
+      this.heads.setColorAt(i, _c.set(palette[Math.floor(r() * palette.length)]));
+    });
+    this.group.add(this.stems, this.heads);
+    this.setBloom(0);
   }
-  return group;
+
+  /** bloom 0..1: flowers grow in one after another. */
+  setBloom(bloom: number) {
+    if (Math.abs(bloom - this.last) < 1e-4) return;
+    this.last = bloom;
+    this.spots.forEach((f, i) => {
+      const t = bloom * 2.2 - f.delay;
+      const u = Math.max(0.0001, t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
+      this.q.identity();
+      this.p.set(f.x, f.y, f.z);
+      this.s.set(u, f.h * u, u);
+      this.m.compose(this.p, this.q, this.s);
+      this.stems.setMatrixAt(i, this.m);
+      this.q.setFromAxisAngle(_up, f.rot);
+      this.p.set(f.x, f.y + f.h * u, f.z);
+      this.s.set(u, 0.6 * u, u);
+      this.m.compose(this.p, this.q, this.s);
+      this.heads.setMatrixAt(i, this.m);
+    });
+    this.stems.instanceMatrix.needsUpdate = true;
+    this.heads.instanceMatrix.needsUpdate = true;
+  }
 }
+const _up = new Vector3(0, 1, 0);
 
 /** The great tree at the centre of the grove. */
 export function greatTree() {
@@ -453,7 +485,7 @@ export function greatTree() {
   }
   const group = new Group();
   group.add(new Mesh(trunk.build(), flatMaterial()));
-  const canopyMat = flatMaterial(0x9fe0c0, 0);
+  const canopyMat = flatMaterial(0x6fc0a8, 0);
   const canopyMesh = new Mesh(canopy.build(), canopyMat);
   group.add(canopyMesh);
   // socket where the star will rest

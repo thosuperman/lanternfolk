@@ -81,7 +81,7 @@ function makeLevel1(): LevelPlan {
     ],
     lanterns: [P(0.03, 0, 0.24), P(0.026, 0, 0.1)],
     hint: P(0, 0.015, 0.168),
-    label: P(0, 0.16, 0.27),
+    label: P(0, 0.17, 0.27),
     intro: ['Wake me', 'Touch the little light with one finger'],
     help: ['Lend me a hand', 'Hold your palm across the gap'],
   };
@@ -113,7 +113,7 @@ function makeLevel2(): LevelPlan {
     lanterns: [P(0.03, low, 0.25), P(0.028, 0, 0.1)],
     hint: P(0, low + 0.01, 0.238),
     hintTo: P(0, 0.01, 0.112),
-    label: P(0, 0.16, 0.27),
+    label: P(0, 0.17, 0.27),
     intro: ['Down here!', 'A gentle touch will wake me'],
     help: ['Lift me higher', 'Let me climb on, then raise your palm to the ledge'],
   };
@@ -157,7 +157,7 @@ function makeLevel3(): LevelPlan {
     hint: P(0.105, 0.035, 0.2),
     leafStart: P(0.105, 0.035, 0.2),
     leafSlot: P(0, 0.002, 0.174),
-    label: P(0, 0.16, 0.29),
+    label: P(0, 0.17, 0.29),
     intro: ['Wake us both', 'Two little lights, one gap'],
     help: ['Help us home', 'Pinch the glowing leaf and lay it across'],
   };

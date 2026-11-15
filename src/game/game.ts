@@ -34,7 +34,7 @@ import {
 } from './logic.js';
 import {
   flatMaterial,
-  flowerField,
+  FlowerField,
   glowSprite,
   GeoBatch,
   greatTree,
@@ -69,7 +69,7 @@ interface Zone {
   mat: MeshLambertMaterial;
   bloom: number;
   bloomTarget: number;
-  flowers: Group;
+  flowers: FlowerField;
   lanterns: ReturnType<typeof pathLantern>[];
   folk: Folk[];
 }
@@ -204,8 +204,8 @@ export class LanternfolkSystem extends createSystem({}) {
         const d = plan.islet.radius * (0.35 + fr() * 0.55);
         spots.push([c.x + Math.cos(a) * d, c.y, c.z + Math.sin(a) * d]);
       }
-      const flowers = flowerField(spots, plan.islet.seed);
-      this.island.add(flowers);
+      const flowers = new FlowerField(spots, plan.islet.seed);
+      this.island.add(flowers.group);
       const lanterns = plan.lanterns.map((p) => {
         const l = pathLantern();
         l.group.position.set(p.x, p.y, p.z);
@@ -235,7 +235,7 @@ export class LanternfolkSystem extends createSystem({}) {
     this.island.add(this.bell.group);
     this.bellLabel = new Label(0.14, 4);
     this.island.add(this.bellLabel.sprite);
-    this.label = new Label(0.34, 4);
+    this.label = new Label(0.3, 4);
     this.island.add(this.label.sprite);
     this.handHint = handHintMesh();
     this.island.add(this.handHint);
@@ -424,7 +424,7 @@ export class LanternfolkSystem extends createSystem({}) {
       z.bloom = 0;
       z.bloomTarget = 0;
       z.folk.forEach((f) => f.reset());
-      z.flowers.children.forEach((c) => c.scale.setScalar(0.0001));
+      z.flowers.setBloom(0);
       z.lanterns.forEach((l) => {
         l.orbMat.color.setHex(0x3a3f66);
         (l.glow.material as SpriteMaterial).opacity = 0;
@@ -582,6 +582,13 @@ export class LanternfolkSystem extends createSystem({}) {
       const model = a.visual?.model;
       if (model && model.visible) model.visible = false;
     }
+    if (this.stockHandTimer <= 0) {
+      // Lanternfolk is touch/palm/pinch only: hide the SDK's far-pointer ray visuals.
+      this.player.traverse((o) => {
+        const m = (o as { material?: { uniforms?: Record<string, unknown> } }).material;
+        if (m?.uniforms && 'endValue' in m.uniforms) o.visible = false;
+      });
+    }
     this.stockHandTimer = this.stockHandTimer <= 0 ? 1 : this.stockHandTimer - dt;
   }
 
@@ -680,7 +687,7 @@ export class LanternfolkSystem extends createSystem({}) {
       }
       case 'finale': {
         const u = Math.min(1, this.phaseTime / 4);
-        this.tree.canopyMat.emissiveIntensity = Math.max(0.16, u * 0.32);
+        this.tree.canopyMat.emissiveIntensity = Math.max(0.12, u * 0.2);
         this.treeLight.intensity = u * 0.55;
         // Light travels up through the branches, one lantern after another.
         this.treeLanterns.forEach((g, i) => {
@@ -724,7 +731,7 @@ export class LanternfolkSystem extends createSystem({}) {
           this.restartFromEnding();
         }
         // keep the canopy glowing
-        this.tree.canopyMat.emissiveIntensity = 0.32;
+        this.tree.canopyMat.emissiveIntensity = 0.2;
         break;
       }
     }
@@ -946,10 +953,7 @@ export class LanternfolkSystem extends createSystem({}) {
     for (const z of this.zones) {
       z.bloom += (z.bloomTarget - z.bloom) * Math.min(1, dt * 1.2);
       z.mat.color.copy(DORMANT).lerp(ALIVE, z.bloom);
-      z.flowers.children.forEach((c) => {
-        const u = smoothstep((z.bloom * 2.2 - (c.userData.delay as number)) / 1);
-        c.scale.setScalar(Math.max(0.0001, u));
-      });
+      z.flowers.setBloom(z.bloom);
       z.lanterns.forEach((l, i) => {
         const lit = z.folk.some((f) => f.isAwake) ? Math.min(1, z.bloom * 2 + (z.folk.some((f) => f.isSeated || f.state === 'bridge' || f.state === 'ride') ? 0.6 : 0.25)) : 0;
         (l.glow.material as SpriteMaterial).opacity = lit * (0.75 + 0.25 * Math.sin(time * 2 + i));
@@ -1024,6 +1028,7 @@ export class LanternfolkSystem extends createSystem({}) {
           self.zones[i].folk.forEach((f) => {
             (f as unknown as { state: string }).state = 'seated';
             copyV3(f.position, f.plan.seat);
+            self.rescued.push(f);
           });
           self.zones[i].bloomTarget = 1;
           self.zones[i].bloom = 1;

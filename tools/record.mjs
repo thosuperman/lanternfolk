@@ -8,8 +8,8 @@ import path from 'node:path';
 export default async function run({ page, cdp }) {
   const dir = process.env.REC_DIR;
   const seconds = Number(process.env.REC_SECONDS || 30);
-  const W = Number(process.env.REC_W || 1920);
-  const H = Number(process.env.REC_H || 1080);
+  const W = Number(process.env.REC_W || 1280);
+  const H = Number(process.env.REC_H || 720);
   fs.mkdirSync(dir, { recursive: true });
   await page.setViewportSize({ width: W, height: H });
   // Hide emulator chrome (dev-only overlays) so the footage shows the app only.
@@ -33,6 +33,57 @@ export default async function run({ page, cdp }) {
       transform:none!important;z-index:2147483646!important;border:0!important;border-radius:0!important;box-shadow:none!important}`,
   });
   await new Promise((r) => setTimeout(r, 800));
+  // Restart the XR session from inside the page so its framebuffer matches the new size.
+  const app = (await page.frames()).find((f) => f !== page.mainFrame()) ?? page;
+  // End the session in-page, then re-enter with a trusted click on the emulator's
+  // own "Enter XR" button so the XR framebuffer is created at the recording size.
+  await app.evaluate(async () => {
+    const w = window.__lf?.world;
+    if (w?.xrSession) {
+      await w.xrSession.end().catch(() => {});
+    }
+  });
+  await new Promise((r) => setTimeout(r, 1200));
+  const enter = app.getByText('Enter XR', { exact: true }).first();
+  await enter.click({ timeout: 8000 }).catch(async () => {
+    await app.evaluate(() => window.__lf?.world?.launchXR());
+  });
+  await new Promise((r) => setTimeout(r, 1500));
+  // Hide emulator chrome inside the app frame (dev-only pill / buttons).
+  await app.evaluate(() => {
+    const style = document.createElement('style');
+    style.textContent = '#landing{display:none!important}';
+    document.head.appendChild(style);
+    const hide = () => {
+      for (const el of document.querySelectorAll('body *')) {
+        const t = (el.textContent || '').trim();
+        if ((t === 'Remote Control Active' || t === 'Enter XR' || t === 'Exit XR') && el.children.length <= 3) {
+          (el.closest('button,div') || el).style.setProperty('display', 'none', 'important');
+        }
+      }
+    };
+    // Dev-only emulator UI lives in shadow-DOM hosts; the XR canvas keeps a stale
+    // inline CSS size after re-entering XR. Fix both for a clean full-frame capture.
+    const fit = () => {
+      for (const el of document.querySelectorAll('body *')) {
+        if (el.shadowRoot) el.style.setProperty('display', 'none', 'important');
+      }
+      for (const c of document.querySelectorAll('canvas')) {
+        if (c.width === window.innerWidth * devicePixelRatio || c.width >= 1000) {
+          c.style.setProperty('width', '100vw', 'important');
+          c.style.setProperty('height', '100vh', 'important');
+        }
+      }
+    };
+    hide();
+    fit();
+    setInterval(() => {
+      hide();
+      fit();
+    }, 500);
+  });
+  const size = await app.evaluate(() => [...document.querySelectorAll('canvas')].map((c) => `${c.width}x${c.height}`).join(','));
+  fs.writeFileSync(path.join(dir, 'canvas.txt'), size);
   // Signal the orchestrator that the viewport is ready, then wait for it to
   // (re)enter XR so the XR framebuffer is created at full size.
   const flag = (name) => path.join(dir, name);
