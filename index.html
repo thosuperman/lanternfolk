@@ -18,6 +18,9 @@
       button:disabled { background: #555a7a; color: #c9cbe0; box-shadow: none; cursor: not-allowed; }
       #xr-status { font-size: 14px; color: #a9b2e6; }
       .fine { font-size: 12px; color: #7f88b8; }
+      .links { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 16px; margin-top: 8px; font-size: 13px; }
+      .links a { color: #b9c1ef; }
+      .links a:focus-visible, button:focus-visible { outline: 2px solid #ffc861; outline-offset: 3px; }
     </style>
   </head>
   <body>
@@ -29,6 +32,9 @@
         <button id="enter-vr">Enter VR</button>
         <p id="xr-status">Checking for VR…</p>
         <p class="fine">3–5 minutes · seated · hand tracking · headphones recommended</p>
+        <nav class="links" aria-label="Information">
+          <a href="about.html">About</a><a href="support.html">Support</a><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a><a href="credits.html">Credits</a>
+        </nav>
       </div>
     </div>
     <script type="module" src="/src/index.ts"></script>

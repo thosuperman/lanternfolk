@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Credits & Licenses · Lanternfolk</title>
+<meta name="description" content="Credits & Licenses for Lanternfolk, a hands-first WebXR game for Meta Quest.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='14' fill='%23ffc861'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="./"><span class="dot" aria-hidden="true"></span>Lanternfolk</a>
+  <a class="play" href="./">Play</a>
+</header>
+<nav class="tabs" aria-label="Pages"><a href="about.html">About</a> <a href="support.html">Support</a> <a href="privacy.html">Privacy Policy</a> <a href="terms.html">Terms of Service</a> <a href="credits.html" aria-current=page>Credits &amp; Licenses</a></nav>
+<main>
+<h1>Credits &amp; Licenses</h1>
+<p class="meta">Last updated: 16 November 2026 · applies to Lanternfolk (lanternfolk.hayaix.tech) only · English</p>
+
+
+<h2>Made by</h2>
+<p>Design, code, procedural art, music and sound: <strong>Tho Nguyen</strong>.</p>
+<h2>Original content</h2>
+<ul>
+<li><strong>3D scenery and characters:</strong> generated at runtime by the game's own code (low-poly geometry). No 3D model files are used.</li>
+<li><strong>Music:</strong> "Moonlit Grove", an original generative score (66 BPM, piano, music box, pads and glass bells) synthesized live with the Web Audio API.</li>
+<li><strong>Sound effects and ambience:</strong> wind, leaves, fireflies, footsteps and chimes, all synthesized in code. No audio files are used.</li>
+<li><strong>Fonts:</strong> none are shipped. Text uses your device's system fonts.</li>
+<li><strong>AI:</strong> development was assisted by AI coding tools. The game contains no AI-generated images, music or video.
+The narration in the demo video uses a synthetic voice (Kokoro TTS, open-weight model, Apache License 2.0).</li>
+</ul>
+<h2>Open-source software in the game</h2>
+<table>
+<thead><tr><th>Software</th><th>Version</th><th>License</th></tr></thead>
+<tbody>
+<tr><td>Immersive Web SDK (<code>@iwsdk/core</code>, <code>@iwsdk/xr-input</code>, <code>@iwsdk/locomotor</code>), Meta Platforms, Inc.</td><td>1.1.0</td><td>MIT</td></tr>
+<tr><td>three.js (via <code>super-three</code>)</td><td>0.185.0</td><td>MIT</td></tr>
+<tr><td>EliCS (entity-component system)</td><td>3.4.2</td><td>MIT</td></tr>
+<tr><td>@preact/signals-core</td><td>1.14.5</td><td>MIT</td></tr>
+<tr><td>pmndrs uikit, uikit-horizon, uikit-lucide, handle, pointer-events (bundled by the SDK)</td><td>1.0.78 / 6.6.32</td><td>MIT</td></tr>
+<tr><td>Lucide icons (bundled via uikit-lucide; not displayed)</td><td>—</td><td>ISC</td></tr>
+</tbody>
+</table>
+<h2>Development tools (not shipped)</h2>
+<table>
+<thead><tr><th>Tool</th><th>License</th></tr></thead>
+<tbody>
+<tr><td>Immersive Web Emulator (IWER) and IWSDK CLI / Vite plugin</td><td>MIT</td></tr>
+<tr><td>Vite</td><td>MIT</td></tr>
+<tr><td>TypeScript</td><td>Apache-2.0</td></tr>
+<tr><td>Vitest</td><td>MIT</td></tr>
+<tr><td>Meta VR CLI (<code>@meta-quest/metavr</code>, installed by the IWSDK starter)</td><td>Meta Platform Technologies SDK License</td></tr>
+</tbody>
+</table>
+<p>The full MIT and Apache-2.0 license texts are available from each project's repository. Thank you to everyone who builds and maintains these projects.</p>
+
+</main>
+<footer>
+  <nav aria-label="Site"><a href="about.html">About</a> <a href="support.html">Support</a> <a href="privacy.html">Privacy Policy</a> <a href="terms.html">Terms of Service</a> <a href="credits.html" aria-current=page>Credits &amp; Licenses</a></nav>
+  <p>Lanternfolk · a small independent WebXR game by Tho Nguyen · part of the <a href="https://hayaix.tech">HAYAiX</a> project showcase.
+  Not affiliated with or endorsed by Meta.</p>
+</footer>
+</body>
+</html>

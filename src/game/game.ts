@@ -140,7 +140,8 @@ export class LanternfolkSystem extends createSystem({}) {
         sound.setPaused(this.paused);
       }),
     );
-    this.exposeDebug();
+    // Test/capture hooks for the emulator tooling (tools/*.py); not shipped in production builds.
+    if (import.meta.env.DEV) this.exposeDebug();
     this.startGame();
   }
 
