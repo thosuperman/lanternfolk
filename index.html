@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <meta name="description" content="Lanternfolk — a hands-first WebXR game for Meta Quest. Tiny lantern spirits walk across your palm to relight a sleeping grove." />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='14' fill='%23ffc861'/%3E%3C/svg%3E" />
+    <title>Lanternfolk</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #090a1f; overflow: hidden; font-family: "Trebuchet MS", "Segoe UI", system-ui, sans-serif; }
+      #scene-container { position: fixed; inset: 0; }
+      #landing { position: fixed; inset: auto 0 0 0; display: flex; justify-content: center; padding: 24px 16px 32px; background: linear-gradient(transparent, rgba(6,6,24,0.92) 40%); color: #f4ecd8; transition: opacity .4s; }
+      #landing.hidden { opacity: 0; pointer-events: none; }
+      .card { max-width: 560px; text-align: center; }
+      h1 { margin: 0 0 6px; font-size: clamp(30px, 6vw, 46px); letter-spacing: .04em; color: #ffe3a3; text-shadow: 0 0 24px rgba(255,200,97,.55); }
+      p { margin: 6px 0; line-height: 1.45; color: #cfd6ff; }
+      button { margin-top: 14px; font: inherit; font-size: 20px; padding: 14px 34px; border-radius: 999px; border: 0; cursor: pointer; background: #ffc861; color: #23183a; font-weight: 700; box-shadow: 0 0 30px rgba(255,200,97,.45); }
+      button:disabled { background: #555a7a; color: #c9cbe0; box-shadow: none; cursor: not-allowed; }
+      #xr-status { font-size: 14px; color: #a9b2e6; }
+      .fine { font-size: 12px; color: #7f88b8; }
+    </style>
+  </head>
+  <body>
+    <div id="scene-container"></div>
+    <div id="landing">
+      <div class="card">
+        <h1>Lanternfolk</h1>
+        <p>Tiny lantern spirits need to get home. Lend them a hand — literally. Be their bridge, give them a lift, and relight a sleeping grove.</p>
+        <button id="enter-vr">Enter VR</button>
+        <p id="xr-status">Checking for VR…</p>
+        <p class="fine">3–5 minutes · seated · hand tracking · headphones recommended</p>
+      </div>
+    </div>
+    <script type="module" src="/src/index.ts"></script>
+  </body>
+</html>
