@@ -16,15 +16,14 @@ import {
   dist3,
   distXZ,
   HandSample,
-  invertRigid,
   isPoking,
+  palmSurface,
   lerpV3,
   samplePolyline,
   smoothstep,
   spanLength,
   stepBridge,
   SupportResult,
-  transformPoint,
   V3,
   v3,
 } from './logic.js';
@@ -105,8 +104,6 @@ export class Folk {
   private hopFrom = v3();
   private hopTo = v3();
   private rideHand = -1;
-  private rideOffset = v3();
-  private inv = new Float32Array(16);
   private sup: SupportResult = { y: 0, hand: -1 };
   private step: BridgeStep = { s: 0, y: 0, blocked: false, onHand: false };
   private stepClock = 0;
@@ -342,12 +339,8 @@ export class Folk {
       if (this.stateTime > 0.5 && canBoard(seg.from, hands, this.sup)) {
         this.rideHand = this.sup.hand;
         copyV3(this.hopFrom, this.pos);
-        this.hopTo.x = seg.from.x;
-        this.hopTo.y = this.sup.y;
-        this.hopTo.z = seg.from.z;
-        // Remember where we stand relative to the wrist so we ride along.
-        invertRigid(hands[this.rideHand].wrist, this.inv);
-        transformPoint(this.inv, this.hopTo, this.rideOffset);
+        // Hop onto the middle of the palm (whichever way it faces).
+        palmSurface(hands[this.rideHand], this.hopTo);
         this.help = null;
         this.events.hop(this);
         this.set('hop-on');
@@ -454,7 +447,7 @@ export class Folk {
     }
     this.waitTime = 0;
     this.help = null;
-    transformPoint(hand.wrist, this.rideOffset, this.hopTo);
+    palmSurface(hand, this.hopTo);
     const k = Math.min(1, dt * 22);
     lerpV3(this.pos, this.pos, this.hopTo, k);
     this.tickSteps(dt, false);

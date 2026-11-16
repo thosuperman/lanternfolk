@@ -235,7 +235,7 @@ export function stepBridge(
 
 export const BOARD_LOW = -0.06;
 export const BOARD_HIGH = 0.11;
-export const LAND_RADIUS = 0.08;
+export const LAND_RADIUS = 0.1;
 export const LAND_LOW = -0.04;
 export const LAND_HIGH = 0.1;
 
@@ -255,6 +255,45 @@ export function canLand(folk: V3, pad: V3): boolean {
   if (distXZ(folk, pad) > LAND_RADIUS) return false;
   const dy = folk.y - pad.y;
   return dy >= LAND_LOW && dy <= LAND_HIGH;
+}
+
+/**
+ * Where a rider stands on a hand: the palm centre (wrist + the four finger
+ * knuckles), lifted along the palm normal, which is flipped to point up so a
+ * palm-down hand carries the rider on its back. Orientation-agnostic.
+ */
+const PALM_JOINTS = [0, 6, 11, 16, 21];
+export function palmSurface(hand: HandSample, out: V3): V3 {
+  const j = hand.joints;
+  let x = 0, y = 0, z = 0;
+  for (const i of PALM_JOINTS) {
+    x += j[i * 3];
+    y += j[i * 3 + 1];
+    z += j[i * 3 + 2];
+  }
+  x /= PALM_JOINTS.length;
+  y /= PALM_JOINTS.length;
+  z /= PALM_JOINTS.length;
+  // across = index knuckle -> pinky knuckle, along = wrist -> middle knuckle
+  const ax = j[21 * 3] - j[6 * 3], ay = j[21 * 3 + 1] - j[6 * 3 + 1], az = j[21 * 3 + 2] - j[6 * 3 + 2];
+  const bx = j[11 * 3] - j[0], by = j[11 * 3 + 1] - j[1], bz = j[11 * 3 + 2] - j[2];
+  let nx = ay * bz - az * by;
+  let ny = az * bx - ax * bz;
+  let nz = ax * by - ay * bx;
+  const len = Math.hypot(nx, ny, nz) || 1;
+  nx /= len;
+  ny /= len;
+  nz /= len;
+  if (ny < 0) {
+    nx = -nx;
+    ny = -ny;
+    nz = -nz;
+  }
+  const lift = 0.012; // about half a hand's thickness
+  out.x = x + nx * lift;
+  out.y = y + ny * lift;
+  out.z = z + nz * lift;
+  return out;
 }
 
 /* 4x4 helpers for riding on the wrist frame (column-major, like Three.js). */

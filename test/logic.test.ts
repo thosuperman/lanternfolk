@@ -10,6 +10,7 @@ import {
   HandSample,
   invertRigid,
   isPoking,
+  palmSurface,
   JOINT_COUNT,
   polyline,
   rotY,
@@ -118,6 +119,26 @@ describe('lift', () => {
     expect(back.x).toBeCloseTo(p.x);
     expect(back.y).toBeCloseTo(p.y);
     expect(back.z).toBeCloseTo(p.z);
+  });
+});
+
+describe('palmSurface', () => {
+  it('stands on top of the palm, whichever way the hand faces', () => {
+    const h = createHandSample();
+    h.present = true;
+    // wrist at origin, knuckles 9 cm ahead in -z, spread along x, all at y = 0.1
+    const set = (i: number, x: number, z: number) => h.joints.set([x, 0.1, z], i * 3);
+    set(0, 0, 0);
+    set(6, 0.035, -0.09);
+    set(11, 0.012, -0.095);
+    set(16, -0.012, -0.093);
+    set(21, -0.033, -0.085);
+    const p = palmSurface(h, v3());
+    expect(p.y).toBeCloseTo(0.112, 3);
+    // mirrored (palm facing down): normal flips, still stands above
+    set(6, -0.035, -0.09);
+    set(21, 0.033, -0.085);
+    expect(palmSurface(h, v3()).y).toBeCloseTo(0.112, 3);
   });
 });
 
