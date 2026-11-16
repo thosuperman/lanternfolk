@@ -791,26 +791,52 @@ export class SkyDome {
   }
 }
 
-/** Slowly rising paper lanterns (level 2) or twinkling drifting stars (level 3). */
+/** Slowly rising paper lanterns (level 2) or twinkling drifting stars (level 3): one Points draw call. */
 export class Drifters {
   readonly group = new Group();
-  private items: { s: Sprite; base: Vector3; speed: number; phase: number }[] = [];
+  private points: Points;
+  private pos: Float32Array;
+  private col: Float32Array;
+  private base: { x: number; y: number; z: number; speed: number; phase: number; r: number; g: number; b: number }[] = [];
   opacity = 0;
   target = 0;
 
   constructor(kind: 'lanterns' | 'stars', count: number, seed: number) {
     const r = rng(seed);
+    this.pos = new Float32Array(count * 3);
+    this.col = new Float32Array(count * 3);
     for (let i = 0; i < count; i++) {
-      const color = kind === 'lanterns' ? (r() < 0.5 ? 0xffb36b : 0xffd27a) : r() < 0.5 ? 0xdfe6ff : 0xfff1c4;
-      const size = kind === 'lanterns' ? 0.05 + r() * 0.04 : 0.025 + r() * 0.03;
-      const s = glowSprite(color, size, 0);
+      const c = new Color(kind === 'lanterns' ? (r() < 0.5 ? 0xffb36b : 0xffd27a) : r() < 0.5 ? 0xdfe6ff : 0xfff1c4);
       const a = r() * Math.PI * 2;
       const d = 0.35 + r() * 0.6;
-      const base = new Vector3(Math.cos(a) * d, -0.3 + r() * 0.5, Math.sin(a) * d);
-      s.position.copy(base);
-      this.group.add(s);
-      this.items.push({ s, base, speed: kind === 'lanterns' ? 0.02 + r() * 0.02 : 0.004 + r() * 0.006, phase: r() * 10 });
+      this.base.push({
+        x: Math.cos(a) * d,
+        y: -0.3 + r() * 0.5,
+        z: Math.sin(a) * d,
+        speed: kind === 'lanterns' ? 0.02 + r() * 0.02 : 0.004 + r() * 0.006,
+        phase: r() * 10,
+        r: c.r,
+        g: c.g,
+        b: c.b,
+      });
     }
+    const g = new BufferGeometry();
+    g.setAttribute('position', new BufferAttribute(this.pos, 3));
+    g.setAttribute('color', new BufferAttribute(this.col, 3));
+    this.points = new Points(
+      g,
+      new PointsMaterial({
+        size: kind === 'lanterns' ? 0.07 : 0.04,
+        map: glowTexture(),
+        vertexColors: true,
+        transparent: true,
+        depthWrite: false,
+        blending: AdditiveBlending,
+        sizeAttenuation: true,
+      }),
+    );
+    this.points.frustumCulled = false;
+    this.group.add(this.points);
     this.group.visible = false;
   }
 
@@ -818,11 +844,19 @@ export class Drifters {
     this.opacity += (this.target - this.opacity) * Math.min(1, dt * 0.8);
     this.group.visible = this.opacity > 0.01;
     if (!this.group.visible) return;
-    for (const it of this.items) {
-      const y = it.base.y + ((t * it.speed + it.phase) % 0.8);
-      it.s.position.set(it.base.x + Math.sin(t * 0.3 + it.phase) * 0.03, y, it.base.z + Math.cos(t * 0.25 + it.phase) * 0.03);
-      const fade = Math.sin(((y - it.base.y) / 0.8) * Math.PI); // fade in and out over the rise
-      (it.s.material as SpriteMaterial).opacity = this.opacity * fade * (0.7 + 0.3 * Math.sin(t * 3 + it.phase * 7));
+    for (let i = 0; i < this.base.length; i++) {
+      const it = this.base[i];
+      const rise = (t * it.speed + it.phase) % 0.8;
+      this.pos[i * 3] = it.x + Math.sin(t * 0.3 + it.phase) * 0.03;
+      this.pos[i * 3 + 1] = it.y + rise;
+      this.pos[i * 3 + 2] = it.z + Math.cos(t * 0.25 + it.phase) * 0.03;
+      // additive blending: colour brightness acts as the fade in/out over the rise
+      const k = this.opacity * Math.sin((rise / 0.8) * Math.PI) * (0.7 + 0.3 * Math.sin(t * 3 + it.phase * 7));
+      this.col[i * 3] = it.r * k;
+      this.col[i * 3 + 1] = it.g * k;
+      this.col[i * 3 + 2] = it.b * k;
     }
+    (this.points.geometry.attributes.position as BufferAttribute).needsUpdate = true;
+    (this.points.geometry.attributes.color as BufferAttribute).needsUpdate = true;
   }
 }
