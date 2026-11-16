@@ -505,8 +505,10 @@ export class Folk {
     const sees = handDist < NOTICE_RADIUS * this.personality.curiosity;
     switch (this.state) {
       case 'sleep':
+        // Half asleep, it still turns toward a hand that comes close.
+        return handDist < 0.28 ? this.yawTo(this.tmp) : null;
       case 'walk':
-        return sees && this.state === 'walk' ? this.yawTo(this.tmp) : null;
+        return sees ? this.yawTo(this.tmp) : null;
       case 'wait': {
         // Hesitate: look across the gap, then back at the hand / the player.
         const seg = this.segment;

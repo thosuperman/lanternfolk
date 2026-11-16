@@ -46,7 +46,7 @@ describe('supportAt', () => {
     const out = { y: 0, hand: -1 };
     supportAt(0, 0, [none(), flatHand(0, 0.02, 0)], out);
     expect(out.hand).toBe(1);
-    expect(out.y).toBeCloseTo(0.03);
+    expect(out.y).toBeCloseTo(0.0255);
   });
   it('ignores absent hands and far points', () => {
     const out = { y: 0, hand: -1 };

@@ -237,7 +237,7 @@ export class LanternfolkSystem extends createSystem({}) {
     this.island.add(this.bell.group);
     this.bellLabel = new Label(0.14, 4);
     this.island.add(this.bellLabel.sprite);
-    this.label = new Label(0.3, 4);
+    this.label = new Label(0.22, 4);
     this.island.add(this.label.sprite);
     this.handHint = handHintMesh();
     this.island.add(this.handHint);
@@ -488,12 +488,20 @@ export class LanternfolkSystem extends createSystem({}) {
 
   /* -------------------------------------------------------------- update */
 
+  private lastDt = 1 / 72;
+  private fpsLabel: Label | null = null;
+  private fpsAcc = 0;
+  private fpsFrames = 0;
+
   update(delta: number, time: number) {
     const dt = Math.min(delta, 0.05);
+    this.lastDt = dt;
+    this.updateStats(delta);
     const inXR = !!this.world.xrSession;
     if (inXR !== this.wasInXR) {
       this.wasInXR = inXR;
       if (inXR) {
+        this.tuneSession();
         sound.unlock();
         sound.startAmbience();
         this.pendingPlace = 2; // wait for a valid head pose
@@ -529,8 +537,11 @@ export class LanternfolkSystem extends createSystem({}) {
       }
     }
     const carrying = this.zones.some((z) => z.folk.some((f) => f.state === 'ride' || f.state === 'bridge'));
-    this.highlight[0] = carrying || this.leafHeld === 0 || this.starHeld === 0;
-    this.highlight[1] = carrying || this.leafHeld === 1 || this.starHeld === 1;
+    // A hand held where a waiting spirit needs it lights up: "this is a valid path".
+    const waiting = this.zones[this.level]?.folk.some((f) => f.help === 'bridge' || f.help === 'lift');
+    const hint = LEVELS[this.level].hint;
+    this.highlight[0] = carrying || this.leafHeld === 0 || this.starHeld === 0 || (!!waiting && this.handIdxNear(0, hint, 0.1));
+    this.highlight[1] = carrying || this.leafHeld === 1 || this.starHeld === 1 || (!!waiting && this.handIdxNear(1, hint, 0.1));
     this.handVisual.update(hands, dt, this.highlight);
     this.hideStockHands(dt);
     this.runTimers(dt);
@@ -628,7 +639,7 @@ export class LanternfolkSystem extends createSystem({}) {
         if (this.reveal < 0.9) {
           this.label.hide();
         } else if (this.level === 0) {
-          this.titleTime += 1 / 60;
+          this.titleTime += this.lastDt;
           this.label.show(this.titleTime < 4 ? 'Lanternfolk' : plan.intro[0], plan.intro[1]);
         }
         else this.label.show(plan.intro[0], plan.intro[1]);
@@ -934,6 +945,45 @@ export class LanternfolkSystem extends createSystem({}) {
     handMat.opacity += (handTarget - handMat.opacity) * Math.min(1, dt * 4);
     this.ring.visible = ringMat.opacity > 0.01;
     this.handHint.visible = handMat.opacity > 0.01;
+  }
+
+  private handIdxNear(i: number, p: V3, r: number) {
+    const h = this.hands.hands[i];
+    if (!h.present) return false;
+    const j = h.joints;
+    return Math.hypot(j[33] - p.x, j[34] - p.y, j[35] - p.z) < r;
+  }
+
+  /** Performance insurance for standalone headsets (no-ops where unsupported). */
+  private tuneSession() {
+    const s = this.world.xrSession as (XRSession & { updateTargetFrameRate?: (r: number) => Promise<void>; supportedFrameRates?: Float32Array }) | undefined;
+    try {
+      this.renderer.xr.setFoveation(1);
+    } catch {
+      /* not supported */
+    }
+    const rates = s?.supportedFrameRates;
+    if (s?.updateTargetFrameRate && rates && Array.from(rates).includes(72)) {
+      s.updateTargetFrameRate(72).catch(() => {});
+    }
+  }
+
+  /** `?stats` in the URL shows an in-world frame-rate readout beside the music bell. */
+  private updateStats(delta: number) {
+    if (!this.fpsLabel) {
+      if (!new URLSearchParams(location.search).has('stats')) return;
+      this.fpsLabel = new Label(0.12, 4);
+      this.island.add(this.fpsLabel.sprite);
+    }
+    this.fpsAcc += delta;
+    this.fpsFrames++;
+    if (this.fpsAcc >= 0.5) {
+      this.fpsLabel.show(`${Math.round(this.fpsFrames / this.fpsAcc)} fps`, '');
+      this.fpsAcc = 0;
+      this.fpsFrames = 0;
+    }
+    this.fpsLabel.sprite.position.set(this.bellLocal.x, this.bellLocal.y + 0.1, this.bellLocal.z);
+    this.fpsLabel.update(1 / 30);
   }
 
   private handNear(p: V3, r: number) {

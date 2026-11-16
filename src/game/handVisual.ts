@@ -29,7 +29,7 @@ for (const [start, len] of [
   for (let i = start; i < start + len - 1; i++) BONES.push([i, i + 1]);
 }
 // knuckle line to give the palm some body
-BONES.push([6, 11], [11, 16], [16, 21], [2, 6]);
+BONES.push([6, 11], [11, 16], [16, 21], [2, 6], [1, 21], [1, 16], [2, 21], [7, 22], [12, 22]);
 
 export class HandVisual {
   readonly group = new Group();
@@ -86,8 +86,8 @@ export class HandVisual {
       if (!vis || !hand.present) continue;
       const j = hand.joints;
       const glow = highlight[h] ? 1.6 : 1;
-      (pearls.material as MeshBasicMaterial).opacity = 0.55 * this.alpha[h] * glow;
-      (bones.material as MeshBasicMaterial).opacity = 0.3 * this.alpha[h] * glow;
+      (pearls.material as MeshBasicMaterial).opacity = 0.5 * this.alpha[h] * glow;
+      (bones.material as MeshBasicMaterial).opacity = 0.42 * this.alpha[h] * glow;
       for (let i = 0; i < 25; i++) {
         const r = Math.max(0.0028, Math.min(0.0065, hand.radii[i] * 0.45));
         this.a.set(j[i * 3], j[i * 3 + 1], j[i * 3 + 2]);
@@ -108,7 +108,7 @@ export class HandVisual {
         } else {
           this.d.divideScalar(len);
           this.q.setFromUnitVectors(this.up, this.d);
-          const r = Math.max(0.003, Math.min(0.009, Math.min(hand.radii[i0], hand.radii[i1]) * 0.6));
+          const r = Math.max(0.0045, Math.min(0.011, Math.min(hand.radii[i0], hand.radii[i1]) * 0.85));
           this.s.set(r, len, r);
           this.a.addScaledVector(this.d, len / 2);
           this.m.compose(this.a, this.q, this.s);

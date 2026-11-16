@@ -99,7 +99,8 @@ export function supportAt(
       const dx = j[i * 3] - x;
       const dz = j[i * 3 + 2] - z;
       if (dx * dx + dz * dz > r2) continue;
-      const top = j[i * 3 + 1] + hand.radii[i];
+      // Stand on the *visible* hand surface (the hand is drawn at about half the joint radius).
+      const top = j[i * 3 + 1] + hand.radii[i] * 0.55;
       if (top > out.y) {
         out.y = top;
         out.hand = h;

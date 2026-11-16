@@ -173,6 +173,8 @@ def setup(level):
     hide_hand("hand-right")
     face(-24 if level == 0 else -30)
     ev(f"lanternfolk.skipTo({level})")
+    time.sleep(0.3)
+    ev("lanternfolk.recenter()")  # place the grove for this head pose, exactly as the XR restart will
     # The page can't be queried during a take (browser scripts are serialized),
     # so read every target now. The grove is re-placed identically at XR restart.
     return ev("lanternfolk.targets")
