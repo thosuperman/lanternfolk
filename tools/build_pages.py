@@ -105,18 +105,23 @@ MAIL = f'<a href="mailto:{EMAIL}">{EMAIL}</a>'
 ABOUT = f"""
 <div class="card"><p><strong>Lanternfolk</strong> is a short, peaceful VR game about helping tiny lost lantern spirits find their way home, using your own hands.</p></div>
 <h2>The idea</h2>
-<p>A miniature moonlit grove floats in front of you. Little spirits are asleep on islands that have drifted apart. Wake them with a touch,
-hold your palm across a gap so they can walk over your hand, let one climb onto your palm and lift it up a cliff, and lay a glowing leaf
-as a bridge for two friends. Every spirit you bring home makes the grove a little warmer: lanterns light up, flowers bloom and the music grows.
-At the end the spirits gather beneath the great tree, and the first friend you helped comes over to say thank you.</p>
+<p>A miniature moonlit grove floats in front of you. Little spirits are asleep on islands that have drifted apart. The game has three chapters:</p>
+<ul>
+<li><strong>The Moonlit Crossing:</strong> wake a shy spirit with a touch and hold your palm across two gaps so it can walk over your hand. Keep your palm flat and steady, or it wobbles and floats back to try again.</li>
+<li><strong>The Rising Lanterns:</strong> let a playful spirit climb onto your palm and lift it up two ledges, past slowly swinging branches.</li>
+<li><strong>The Starlight Reunion:</strong> pinch a glowing leaf into a bridge for two friends, then scoop the last star onto your open palm and carry it to the top of the great tree.</li>
+</ul>
+<p>Every spirit you bring home makes the grove a little warmer: lanterns light up, flowers bloom and the music grows. Spirits that slip are never hurt; they float back,
+a little dizzy, and try again. At the end the spirits gather beneath the great tree, and the first friend you helped comes over to say thank you.</p>
 <p>The core idea: <em>your hands can become someone else's way home</em>. Lanternfolk is designed to be calm and comforting.
 It is a relaxing entertainment experience, not a medical, therapeutic or wellness treatment, and it makes no health claims.</p>
 <h2>How to play</h2>
 <ul>
 <li>Open <strong>{SITE}</strong> in the <strong>Meta Quest Browser</strong> and choose <strong>Enter VR</strong>.</li>
 <li>Put your controllers down. Lanternfolk is played entirely with hand tracking: touch, an open palm, and a pinch.</li>
-<li>Play seated. Everything is within a comfortable reach in front of you. A full playthrough takes about 3–5 minutes.</li>
+<li>Play seated. Everything is within a comfortable reach in front of you. There are three short chapters; a first playthrough is designed to take roughly 8–12 minutes.</li>
 <li>Touch the small moon-bell beside the grove to turn the music on or off.</li>
+<li>Spirits that lose their balance are never hurt: they float back to their last safe spot and you can simply try again.</li>
 </ul>
 <h2>Built with</h2>
 <ul>
@@ -144,8 +149,8 @@ your headset model and Quest Browser version. Lanternfolk is a free personal pro
 <h3>The grove is in an awkward place</h3>
 <p>Sit comfortably, look straight ahead and use your headset's recenter gesture or button. The grove moves to about an arm's length in front of you.</p>
 <h3>A spirit will not cross my hand</h3>
-<p>Hold your hand flat and still across the gap, at about the height of the path. A loose, open hand works best. If your hand moves away,
-the spirit simply floats back to safety and waits for you to try again.</p>
+<p>Hold your hand flat and still across the gap, at about the height of the path. A loose, open hand works best. If your hand tilts a lot, moves suddenly or
+leaves, the spirit floats back to safety and waits for you to try again. Moving slowly and keeping your palm level always works.</p>
 <h3>I can't hear anything</h3>
 <p>Check the headset volume, then touch the small moon-bell beside the grove: it toggles the music. Sound starts after you press <em>Enter VR</em>.</p>
 <h2>Known limitations</h2>
@@ -153,7 +158,7 @@ the spirit simply floats back to safety and waits for you to try again.</p>
 <li>Lanternfolk was developed and tested in the Immersive Web Emulator. It has not yet been tested by the developer on a physical Meta Quest headset,
 so hand-tracking feel and performance on real hardware may differ.</li>
 <li>Hand tracking is required. Controllers may be visible, but the puzzles are designed for hands.</li>
-<li>There is no save system: each visit is a complete 3–5 minute session.</li>
+<li>There is no save system: each visit is one complete playthrough of the three chapters.</li>
 </ul>
 """
 
