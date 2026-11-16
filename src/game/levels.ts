@@ -196,7 +196,8 @@ function makeLevel2(): LevelPlan {
       // between the low islet and the mid ledge
       { a: P(0.02, -0.11, 0.21), b: P(0.07, -0.11, 0.28), radius: 0.012, swing: P(0.03, 0.0, 0.0), period: 5.5, phase: 0 },
       // between the mid ledge and the top
-      { a: P(0.03, -0.035, 0.14), b: P(0.1, -0.035, 0.16), radius: 0.012, swing: P(0.0, 0.02, 0.025), period: 4.5, phase: 1.6 },
+      // crosses the direct diagonal; going up beside the ledge, over and down stays clear
+      { a: P(0.08, -0.025, 0.128), b: P(0.031, -0.025, 0.155), radius: 0.012, swing: P(-0.007, 0.0, -0.013), period: 4.5, phase: 1.6 },
     ],
     label: P(0.04, 0.2, 0.3),
     intro: ['Down here!', 'A gentle touch will wake me'],

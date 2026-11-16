@@ -136,6 +136,7 @@ export class Folk {
   help: HelpKind = null;
   /** Number of slips so far in this run (for encouragement). */
   slips = 0;
+  lastSlip = '';
   private seg = 0;
   private s = 0;
   private pos = v3();
@@ -423,6 +424,7 @@ export class Folk {
     copyV3(this.returnTarget, seg.kind === 'bridge' ? seg.span.from : seg.kind === 'lift' ? seg.from : this.pos);
     copyV3(this.hopFrom, this.pos);
     this.slips++;
+    this.lastSlip = reason;
     this.wasSlip = true;
     this.balance = 1;
     this.help = null;
@@ -509,7 +511,8 @@ export class Folk {
       this.events.worry(this);
     }
     this.pos.y = this.prev.y + Math.sin(this.t * 6) * 0.0004;
-    if (this.stateTime > 2.6) this.slip('tracking');
+    // A hand that is there but not a usable path (e.g. on its side) counts as a balance slip.
+    if (this.stateTime > 2.6) this.slip(hands.some((h) => h.present) ? 'balance' : 'tracking');
   }
 
   private updateReturn() {

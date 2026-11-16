@@ -69,59 +69,81 @@ def poke(target, settle=0.4):
     ])
 
 
+FLATP = {"fingers": [-1, 0, 0], "palm": "up"}
+PALMJ = "middle-finger-metacarpal"
+
+
+def palm(target, dy=0.0, duration=1.0, label="palm", orientation=None):
+    return {"label": label, "position": P(target, dy=dy), "anchor": PALMJ, "poseId": "flat",
+            "orientation": orientation or FLATP, "duration": duration}
+
+
+def detour(frm, to, branch, up=0.12):
+    ax, az = frm[0] - branch[0], frm[2] - branch[2]
+    n = (ax * ax + az * az) ** 0.5 or 1.0
+    side = [frm[0] + ax / n * 0.035, frm[1] + up, frm[2] + az / n * 0.035]
+    over = [to[0], max(frm[1] + up, to[1] + 0.07), to[2]]
+    return [palm(side, duration=1.6, label="up"), palm(over, duration=1.8, label="over"),
+            palm(to, dy=-0.01, duration=1.2, label="down"), {"label": "hold", "duration": 0.8}]
+
+
 def take_a(marks, t):
-    # Cold open: the grove rises, the camera settles onto it, then leans in.
+    """Cold open + Chapter 1: wake, first crossing, a wobble and slip on the wide gap, a steady retry."""
     time.sleep(0.6)
     look([0.0, CENTRE[1] + 0.05, -0.55], 2.6)
     time.sleep(1.0)
     lean_in(2.2)
-    look([0.0, CENTRE[1] + 0.02, -0.5], 1.5)
-    marks["l1"] = time.time()
-    look([0.0, CENTRE[1] + 0.04, -0.45], 1.2)
+    look([0.04, CENTRE[1] + 0.02, -0.48], 1.5)
+    time.sleep(1.5)
+    marks["wake"] = time.time()
     poke(t["folk1a"])
     hide_hand("hand-right")
-    time.sleep(3.6 + 2.4)  # walk to the gap, then let the ghost-hand hint show
-    h = t["hint1"]
-    marks["bridge"] = time.time()
-    seq([
-        {"label": "in", "position": P(h, dx=0.12, dy=0.08, dz=0.1), "anchor": "grasp", "poseId": "flat", "orientation": FLAT, "duration": 1.0},
-        {"label": "lay", "position": P(h), "anchor": "grasp", "orientation": FLAT, "duration": 0.9},
-    ])
-    time.sleep(5.2)  # hesitate, cross the hand, walk to the tree, happy bounce
-    seq([{"label": "out", "position": P(h, dx=0.15, dy=0.1, dz=0.12), "anchor": "grasp", "orientation": FLAT, "duration": 0.8}])
+    time.sleep(5.5)  # walks to the first gap, hesitates, ghost hand appears
+    marks["gap1"] = time.time()
+    seq([palm(t["bridge1_0"], dy=-0.02, label="bridge1"), {"label": "hold", "duration": 4.2}])
     hide_hand("hand-right")
+    time.sleep(3.0)  # crosses the stepping stone to the wide gap
+    marks["tilt"] = time.time()
+    seq([palm(t["bridge1_1"], dy=-0.02, label="tilted", orientation={"fingers": [-1, 0, 0], "palm": "forward"}),
+         {"label": "hold", "duration": 2.6}])
+    hide_hand("hand-right")
+    time.sleep(3.6)  # floats back, dizzy, friends worry
+    marks["retry"] = time.time()
+    seq([palm(t["bridge1_1"], dy=-0.02, label="steady"), {"label": "hold", "duration": 4.6}])
+    hide_hand("hand-right")
+    time.sleep(2.0)
     look([0.0, CENTRE[1] + 0.06, -0.6], 1.5)
-    time.sleep(5.5)  # celebration + the grove turns to the next friend
+    time.sleep(6.0)  # celebration, chapter complete, the grove turns
 
 
 def take_b(marks, t):
+    """Chapter 2: wake, board, bump a swinging branch (slip), then lift up-and-over twice."""
     lean_in(1.2)
-    look([0.0, t["folk2a"][1] + 0.02, -0.45], 1.2)
+    time.sleep(3.0)  # chapter card
+    look([0.03, t["folk2a"][1] + 0.03, -0.45], 1.2)
     poke(t["folk2a"])
     hide_hand("hand-right")
-    time.sleep(3.2 + 2.2)
-    h, h2 = t["hint2"], t["hintTo2"]
+    time.sleep(3.6)
+    marks["board"] = time.time()
+    seq([palm(t["lift2_0"], dy=-0.005, label="offer"), {"label": "hold", "duration": 1.0}])
+    marks["bump"] = time.time()
+    seq([palm(t["branchRest0"], dy=-0.045, duration=1.0, label="into-branch"), {"label": "hold", "duration": 2.2}])
+    hide_hand("hand-right")
+    time.sleep(3.6)  # floats back to the pad, dizzy
     marks["lift"] = time.time()
-    seq([
-        {"label": "in", "position": P(h, dx=0.12, dy=0.06, dz=0.1), "anchor": "grasp", "poseId": "flat", "orientation": FLAT, "duration": 1.0},
-        {"label": "offer", "position": P(h, dy=0.05), "anchor": "grasp", "orientation": FLAT, "duration": 0.8},
-        {"label": "wait", "duration": 1.2},
-    ])
-    seq([
-        {"label": "raise", "position": P(h, dy=0.1, dz=0.01), "anchor": "grasp", "orientation": FLAT, "duration": 1.5},
-        {"label": "to-ledge", "position": P(h2, dy=0.03), "anchor": "grasp", "orientation": FLAT, "duration": 1.5},
-        {"label": "hold", "duration": 0.8},
-    ])
-    time.sleep(0.8)
-    seq([{"label": "out", "position": P(h2, dx=0.15, dy=0.1, dz=0.14), "anchor": "grasp", "orientation": FLAT, "duration": 0.8}])
+    seq([palm(t["lift2_0"], dy=-0.005, label="offer2"), {"label": "hold", "duration": 1.0}] + detour(t["lift2_0"], t["liftTo2_0"], t["branchRest0"]))
     hide_hand("hand-right")
     time.sleep(2.2)
+    seq([palm(t["lift2_1"], dy=-0.005, label="offer3"), {"label": "hold", "duration": 1.0}] + detour(t["lift2_1"], t["liftTo2_1"], t["branchRest1"], up=0.1))
+    hide_hand("hand-right")
     look([0.0, CENTRE[1] + 0.06, -0.6], 1.5)
-    time.sleep(5.5)
+    time.sleep(6.5)
 
 
 def take_c(marks, t):
+    """Chapter 3: wake two friends, pinch the leaf bridge, scoop the star onto the palm, finale."""
     lean_in(1.2)
+    time.sleep(3.0)
     look([0.0, CENTRE[1] + 0.04, -0.47], 1.2)
     poke(t["folk3a"], settle=0.2)
     poke(t["folk3b"], settle=0.2)
@@ -137,23 +159,29 @@ def take_c(marks, t):
         {"label": "away", "position": P(slot, dx=0.12, dy=0.12, dz=0.12), "anchor": "grasp", "duration": 0.8},
     ])
     hide_hand("hand-right")
-    time.sleep(7.0 + 3.6)  # both cross the leaf, celebration, the star appears
+    time.sleep(10.6)  # both cross, celebrate, the star appears on its drifting islet
     marks["star"] = time.time()
-    star, sock = t["star"], t["socket"]
-    look([star[0] * 0.5, (star[1] + sock[1]) / 2, -0.55], 1.4)
-    seq([
-        {"label": "grab", "position": P(star), "anchor": "grasp", "approach": {"distance": 0.06}, "pinch": {"value": 1, "at": "arrival"}, "duration": 1.3},
-        {"label": "carry", "position": P(sock, dy=0.03), "anchor": "grasp", "duration": 1.6},
-        {"label": "set", "position": P(sock, dy=0.005), "anchor": "grasp", "duration": 0.5},
-        {"label": "release", "pinch": 0, "duration": 0.25},
-        {"label": "away", "position": P(sock, dx=0.14, dy=0.02, dz=0.16), "anchor": "grasp", "duration": 0.9},
-    ])
+    star_now = ev_star_estimate(t)
+    look([star_now[0] * 0.6, star_now[1] + 0.06, -0.52], 1.2)
+    sock = t["socket"]
+    seq([palm(star_now, dy=-0.035, duration=1.2, label="scoop"), {"label": "hold", "duration": 0.8},
+         palm([sock[0], sock[1] - 0.12, sock[2] + 0.05], duration=2.0, label="rise"),
+         palm([sock[0], sock[1] - 0.045, sock[2]], duration=1.5, label="to-ring"),
+         {"label": "hold", "duration": 0.6}])
     hide_hand("hand-right")
     marks["finale"] = time.time()
     look([0.0, sock[1] - 0.14, -0.62], 3.0)
-    time.sleep(3.5)
+    time.sleep(4.0)
     look([0.0, CENTRE[1] + 0.06, -0.58], 2.5)
-    time.sleep(5.0)
+    time.sleep(6.0)
+
+
+STAR_T0 = {"t": 0.0}
+
+
+def ev_star_estimate(t):
+    """The star islet drifts slowly (18 s loop, a few cm); aim at its centre and let the palm window absorb the rest."""
+    return t["starCentre"]
 
 
 TAKES = {"A": (0, take_a), "B": (1, take_b), "C": (2, take_c)}

@@ -85,7 +85,7 @@ export interface GameDebug {
   level: number;
   musicMuted: boolean;
   rescued: number;
-  folk: { state: string; help: string | null; emotion: string; seg: number; slips: number; balance: number; x: number; y: number; z: number }[];
+  folk: { state: string; help: string | null; emotion: string; seg: number; slips: number; lastSlip: string; balance: number; x: number; y: number; z: number }[];
   star: { rider: number; held: number; placed: boolean; balance: number };
   targets: Record<string, [number, number, number]>;
   skipTo(level: number): void;
@@ -1274,7 +1274,7 @@ export class LanternfolkSystem extends createSystem({}) {
         return self.zones.flatMap((z) =>
           z.folk.map((f) => {
             const w = self.toWorld(f.position);
-            return { state: f.state, help: f.help, emotion: f.emotion, seg: f.segmentIndex, slips: f.slips, balance: +f.balance.toFixed(2), x: w[0], y: w[1], z: w[2] };
+            return { state: f.state, help: f.help, emotion: f.emotion, seg: f.segmentIndex, slips: f.slips, lastSlip: f.lastSlip, balance: +f.balance.toFixed(2), x: w[0], y: w[1], z: w[2] };
           }),
         );
       },
@@ -1300,6 +1300,10 @@ export class LanternfolkSystem extends createSystem({}) {
             }
           }
         });
+        self.obstacles.forEach((o, k) => {
+          const pl = o.plan;
+          t[`branchRest${k}`] = self.toWorld(v3((pl.a.x + pl.b.x) / 2, (pl.a.y + pl.b.y) / 2, (pl.a.z + pl.b.z) / 2));
+        });
         self.liveObstacles.forEach((o, k) => {
           const m = v3((o.a.x + o.b.x) / 2, (o.a.y + o.b.y) / 2, (o.a.z + o.b.z) / 2);
           t[`branch${k}`] = self.toWorld(m);
@@ -1307,6 +1311,8 @@ export class LanternfolkSystem extends createSystem({}) {
         t.leaf = self.toWorld(self.leafPos);
         t.leafSlot = self.toWorld(LEVELS[2].leafSlot!);
         t.star = self.toWorld(self.starPos);
+        const sc = LEVELS[2].star!.center;
+        t.starCentre = self.toWorld(v3(sc.x, sc.y + 0.006, sc.z));
         t.socket = self.toWorld(SOCKET);
         t.replay = self.toWorld(self.replayPos);
         t.bell = self.toWorld(self.bellLocal);
