@@ -44,3 +44,9 @@ pids/
 .vscode/mcp.json
 .codex/config.toml
 tools/.distribution-id
+
+# Video build outputs and raw takes (the demo video is on YouTube)
+video/build/
+video/takes/
+*.mp4
+*.wav

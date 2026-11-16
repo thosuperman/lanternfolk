@@ -4,6 +4,15 @@ A hands-first, seated WebXR game for Meta Quest, built with Meta's Immersive Web
 Tiny lantern spirits walk across your palm to find their way home.
 
 **Play:** https://lanternfolk.hayaix.tech, opened in Meta Quest Browser. Press Enter VR and put the controllers down.
+**Demo video:** https://youtu.be/RVbo4JKe-rY (real gameplay captured in the Immersive Web Emulator).
+
+Three short chapters: *The Moonlit Crossing* (be a bridge, keep it steady), *The Rising Lanterns* (lift a spirit past swinging
+branches) and *The Starlight Reunion* (pinch a leaf bridge, then carry the last star on your palm). Spirits that slip are never
+hurt: they float back to their last safe spot and try again.
+
+Made for the Meta VR Start Developer Competition 2026 (Gaming, New Experience). Not affiliated with or endorsed by Meta.
+
+> Tested only in the Immersive Web Emulator so far; real Quest frame rate and hand-tracking feel have not been verified.
 
 ## Requirements
 Node 20.19+ (tested with 24.22) and npm. Python 3 is needed for the emulator playtest and the capture tools.
@@ -42,4 +51,11 @@ python3 tools/build_pages.py     # regenerate about/support/privacy/terms/credit
 | `src/game/audio.ts`, `music.ts` | Synthesized SFX and generative score |
 | `tools/` | Emulator playtest, footage capture (`film.py`, `record.mjs`, `render_audio.mjs`), deploy, page generator |
 
-All art and audio are generated in code. See `public/credits.html` for third-party licenses.
+## Docs
+`docs/` holds the competition research, idea evaluation, technical feasibility, plan, status, QA report, submission package
+and readiness report, plus the gallery images and captions (`docs/submission/images/`). `video/build.py` and
+`video/Lanternfolk_Demo.srt` rebuild the demo video from takes filmed with `tools/film.py`.
+
+## License
+All art and audio are generated in code. Copyright (c) 2026 Tho Nguyen, all rights reserved; see `LICENSE`.
+Third-party libraries keep their own licenses; see `public/credits.html`.
