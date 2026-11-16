@@ -292,13 +292,16 @@ def main():
     s = ev("lanternfolk.star")
     check("Star: scooped onto the open palm", s["rider"] >= 0, json.dumps(s))
     # Failure: shake it and the star rolls off, floating back to its islet.
-    t = ev("lanternfolk.targets")
-    seq([
-        palm_at(t["star"], dy=0.18, duration=0.15, label="shake-up"),
-        palm_at(t["star"], dy=-0.04, duration=0.15, label="shake-down"),
-        palm_at(t["star"], dy=0.18, duration=0.15, label="shake-up2"),
-        palm_at(t["star"], dy=-0.04, duration=0.15, label="shake-down2"),
-    ])
+    for _ in range(3):  # shake (a few rounds at most) until it rolls off
+        t = ev("lanternfolk.targets")
+        seq([
+            palm_at(t["star"], dy=0.18, duration=0.15, label="shake-up"),
+            palm_at(t["star"], dy=-0.04, duration=0.15, label="shake-down"),
+            palm_at(t["star"], dy=0.18, duration=0.15, label="shake-up2"),
+            palm_at(t["star"], dy=-0.04, duration=0.15, label="shake-down2"),
+        ])
+        if ev("lanternfolk.star")["rider"] < 0:
+            break
     cli("xr", "set-transform", payload={"device": "hand-right", "anchor": "wrist", "position": {"x": 0.22, "y": 0.75, "z": -0.15}})
     s = ev("lanternfolk.star")
     check("Star failure: shaking makes it roll off and float home", s["rider"] < 0 and not s["placed"], json.dumps(s))
