@@ -516,8 +516,8 @@ export function pathLantern() {
   return { group: g, orbMat, glow };
 }
 
-/** One lantern spirit. ~3.5 cm tall with a glowing lantern head. */
-export function folkMesh(tint: number) {
+/** One lantern spirit (~3.5 cm before scaling) holding a lantern on a stick. */
+export function folkMesh(tint: number, personality: 'shy' | 'playful' | 'brave' | 'gentle' = 'shy') {
   const root = new Group();
   const body = new Group();
   root.add(body);
@@ -531,30 +531,63 @@ export function folkMesh(tint: number) {
   // feet
   b.add(new SphereGeometry(0.0035, 6, 4), 0x5c5480, [-0.004, 0.0015, 0.002]);
   b.add(new SphereGeometry(0.0035, 6, 4), 0x5c5480, [0.004, 0.0015, 0.002]);
+  // A small accessory so each personality reads at a glance.
+  switch (personality) {
+    case 'shy': // a soft scarf
+      b.add(new TorusGeometry(0.0075, 0.0022, 5, 12), 0xffc861, [0, 0.0185, 0], [Math.PI / 2, 0, 0]);
+      break;
+    case 'playful': // two perky ears
+      b.add(new ConeGeometry(0.0028, 0.008, 5), 0xf6f2ff, [-0.0055, 0.0355, 0], [0, 0, 0.35]);
+      b.add(new ConeGeometry(0.0028, 0.008, 5), 0xf6f2ff, [0.0055, 0.0355, 0], [0, 0, -0.35]);
+      break;
+    case 'brave': // a leaf plume
+      b.add(new ConeGeometry(0.0024, 0.014, 4), 0x7ed68a, [0.002, 0.039, -0.002], [-0.35, 0, -0.25]);
+      break;
+    case 'gentle': // a flower on the hood
+      b.add(new IcosahedronGeometry(0.0034, 0), 0xff9ec7, [-0.005, 0.0335, 0.003]);
+      b.add(new IcosahedronGeometry(0.0016, 0), 0xfff1a8, [-0.005, 0.0345, 0.0062]);
+      break;
+  }
   const bodyMesh = new Mesh(b.build(), flatMaterial(0x8890ff, 0.12));
   body.add(bodyMesh);
   // eyes (bright so they read from 40 cm)
   const eyeMat = new MeshBasicMaterial({ color: 0xfff6d8 });
   const eyeGeo = new SphereGeometry(0.0016, 6, 4);
+  const eyes: Mesh[] = [];
   for (const sx of [-0.0028, 0.0028]) {
     const e = new Mesh(eyeGeo, eyeMat);
     e.position.set(sx, 0.0265, 0.0105);
     e.scale.set(1, 1.3, 0.6);
     body.add(e);
+    eyes.push(e);
   }
-  // little lantern held up on a stick
+  // The arm pivots at the shoulder so the spirit can raise or wave its lantern.
+  const arm = new Group();
+  arm.position.set(0.006, 0.021, 0.002);
+  body.add(arm);
   const stick = new Mesh(new CylinderGeometry(0.0007, 0.0007, 0.022, 4), new MeshBasicMaterial({ color: 0x9a8f7a }));
-  stick.position.set(0.009, 0.03, 0.002);
+  stick.position.set(0.003, 0.009, 0);
   stick.rotation.z = -0.35;
-  body.add(stick);
+  arm.add(stick);
   const lanternMat = new MeshBasicMaterial({ color: tint });
   const lantern = new Mesh(new OctahedronGeometry(0.0042, 0), lanternMat);
-  lantern.position.set(0.0135, 0.041, 0.002);
-  body.add(lantern);
+  lantern.position.set(0.0075, 0.02, 0);
+  arm.add(lantern);
   const glow = glowSprite(tint, 0.07, 0.9);
   glow.position.copy(lantern.position);
-  body.add(glow);
-  return { root, body, lantern, lanternMat, glow, eyeMat };
+  arm.add(glow);
+  // Little stars that circle the head when dizzy.
+  const dizzy = new Group();
+  dizzy.position.set(0, 0.04, 0);
+  for (let i = 0; i < 3; i++) {
+    const st = glowSprite(0xfff1a8, 0.012, 0.95);
+    const a = (i / 3) * Math.PI * 2;
+    st.position.set(Math.cos(a) * 0.011, 0, Math.sin(a) * 0.011);
+    dizzy.add(st);
+  }
+  dizzy.visible = false;
+  body.add(dizzy);
+  return { root, body, arm, lantern, lanternMat, glow, eyeMat, eyes, dizzy };
 }
 
 /** Night sky: a sphere of stars plus a soft moon. */
@@ -680,4 +713,116 @@ export function starMesh() {
   const glow = glowSprite(0xffd27a, 0.14, 0.9);
   g.add(glow);
   return { group: g, core, glow };
+}
+
+/* ---------------------------------------------------- level dressing (v2) -- */
+
+/** A floating branch with glowing leaves; oriented along +x, length 1 (scaled at runtime). */
+export function branchMesh() {
+  const g = new Group();
+  const b = new GeoBatch();
+  const r = rng(51);
+  b.add(new CylinderGeometry(0.009, 0.011, 1, 6), 0x6b4a3a, [0, 0, 0], [0, 0, Math.PI / 2], 1, { amount: 0.002, rand: r, colorVar: 0.2 });
+  const log = new Mesh(b.build(), flatMaterial());
+  g.add(log);
+  const leaves = new GeoBatch();
+  for (let i = 0; i < 5; i++) {
+    leaves.add(new IcosahedronGeometry(0.008 + r() * 0.005, 0), r() < 0.5 ? 0x5fbf8a : 0x8fd27a, [(i / 4 - 0.5) * 0.8, 0.008 + r() * 0.006, (r() - 0.5) * 0.012]);
+  }
+  const leafMeshObj = new Mesh(leaves.build(), flatMaterial(0x3f8f6a, 0.4));
+  g.add(leafMeshObj);
+  const glow = glowSprite(0xffb36b, 0.06, 0.6);
+  g.add(glow);
+  return { group: g, log, leaves: leafMeshObj, glow };
+}
+
+/** A big gradient sphere behind everything; colours tween between level moods. */
+export class SkyDome {
+  readonly mesh: Mesh;
+  private top = new Color();
+  private bottom = new Color();
+  private targetTop = new Color();
+  private targetBottom = new Color();
+  private colors: BufferAttribute;
+  private ys: number[] = [];
+
+  constructor(radius = 40) {
+    const geo = new SphereGeometry(radius, 24, 12);
+    const pos = geo.attributes.position as BufferAttribute;
+    const cols = new Float32Array(pos.count * 3);
+    for (let i = 0; i < pos.count; i++) this.ys.push(pos.getY(i) / radius);
+    this.colors = new BufferAttribute(cols, 3);
+    geo.setAttribute('color', this.colors);
+    this.mesh = new Mesh(geo, new MeshBasicMaterial({ vertexColors: true, side: 1, depthWrite: false, fog: false }));
+    this.mesh.renderOrder = -10;
+    this.mesh.frustumCulled = false;
+    this.set(0x070a26, 0x1a1f4d, true);
+  }
+
+  set(top: number, bottom: number, instant = false) {
+    this.targetTop.set(top);
+    this.targetBottom.set(bottom);
+    if (instant) {
+      this.top.copy(this.targetTop);
+      this.bottom.copy(this.targetBottom);
+      this.write();
+    }
+  }
+
+  update(dt: number) {
+    const k = Math.min(1, dt * 0.6);
+    const before = this.top.r + this.top.g + this.top.b + this.bottom.r + this.bottom.g + this.bottom.b;
+    this.top.lerp(this.targetTop, k);
+    this.bottom.lerp(this.targetBottom, k);
+    const after = this.top.r + this.top.g + this.top.b + this.bottom.r + this.bottom.g + this.bottom.b;
+    if (Math.abs(after - before) > 1e-5) this.write();
+  }
+
+  private write() {
+    const a = this.colors.array as Float32Array;
+    for (let i = 0; i < this.ys.length; i++) {
+      const t = Math.max(0, Math.min(1, (this.ys[i] + 0.25) / 1.1));
+      const e = t * t;
+      a[i * 3] = this.bottom.r + (this.top.r - this.bottom.r) * e;
+      a[i * 3 + 1] = this.bottom.g + (this.top.g - this.bottom.g) * e;
+      a[i * 3 + 2] = this.bottom.b + (this.top.b - this.bottom.b) * e;
+    }
+    this.colors.needsUpdate = true;
+  }
+}
+
+/** Slowly rising paper lanterns (level 2) or twinkling drifting stars (level 3). */
+export class Drifters {
+  readonly group = new Group();
+  private items: { s: Sprite; base: Vector3; speed: number; phase: number }[] = [];
+  opacity = 0;
+  target = 0;
+
+  constructor(kind: 'lanterns' | 'stars', count: number, seed: number) {
+    const r = rng(seed);
+    for (let i = 0; i < count; i++) {
+      const color = kind === 'lanterns' ? (r() < 0.5 ? 0xffb36b : 0xffd27a) : r() < 0.5 ? 0xdfe6ff : 0xfff1c4;
+      const size = kind === 'lanterns' ? 0.05 + r() * 0.04 : 0.025 + r() * 0.03;
+      const s = glowSprite(color, size, 0);
+      const a = r() * Math.PI * 2;
+      const d = 0.35 + r() * 0.6;
+      const base = new Vector3(Math.cos(a) * d, -0.3 + r() * 0.5, Math.sin(a) * d);
+      s.position.copy(base);
+      this.group.add(s);
+      this.items.push({ s, base, speed: kind === 'lanterns' ? 0.02 + r() * 0.02 : 0.004 + r() * 0.006, phase: r() * 10 });
+    }
+    this.group.visible = false;
+  }
+
+  update(dt: number, t: number) {
+    this.opacity += (this.target - this.opacity) * Math.min(1, dt * 0.8);
+    this.group.visible = this.opacity > 0.01;
+    if (!this.group.visible) return;
+    for (const it of this.items) {
+      const y = it.base.y + ((t * it.speed + it.phase) % 0.8);
+      it.s.position.set(it.base.x + Math.sin(t * 0.3 + it.phase) * 0.03, y, it.base.z + Math.cos(t * 0.25 + it.phase) * 0.03);
+      const fade = Math.sin(((y - it.base.y) / 0.8) * Math.PI); // fade in and out over the rise
+      (it.s.material as SpriteMaterial).opacity = this.opacity * fade * (0.7 + 0.3 * Math.sin(t * 3 + it.phase * 7));
+    }
+  }
 }

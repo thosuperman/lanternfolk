@@ -50,6 +50,12 @@ export interface HandSample {
   pinching: boolean;
   /** Column-major 4x4 of the wrist joint in island-local space. */
   wrist: Float32Array;
+  /** Palm centre (wrist + four finger knuckles). */
+  palm: V3;
+  /** Angle (radians) between the palm plane and horizontal; 0 = flat, either side up. */
+  tilt: number;
+  /** Smoothed palm speed (m/s). */
+  speed: number;
 }
 
 export function createHandSample(): HandSample {
@@ -62,7 +68,67 @@ export function createHandSample(): HandSample {
     pinchPoint: v3(),
     pinching: false,
     wrist: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]),
+    palm: v3(),
+    tilt: 0,
+    speed: 0,
   };
+}
+
+/* ------------------------------------------------------------------------ */
+/* Balance: a spirit standing on a hand wobbles if the hand tilts too far    */
+/* or moves too fast, and slips when its balance runs out. Deliberately     */
+/* forgiving: a calm, roughly flat hand never causes a slip.                 */
+/* ------------------------------------------------------------------------ */
+
+/** Tilt (rad) below which the palm counts as level (~40°). */
+export const TILT_SAFE = 0.7;
+/** Tilt at which balance drains at full rate (~72°). */
+export const TILT_MAX = 1.25;
+/** Palm speed (m/s) below which movement is calm. */
+export const SPEED_SAFE = 0.35;
+/** Speed at which balance drains at full rate. */
+export const SPEED_MAX = 0.85;
+/** Full-rate drain per second (balance 1 -> 0 in ~0.8 s of rough handling). */
+export const BALANCE_DRAIN = 1.25;
+/** Recovery per second while the hand is calm. */
+export const BALANCE_RECOVER = 0.7;
+
+/** 0 (calm) .. 1+ (very rough) instability for a hand. */
+export function instability(tilt: number, speed: number): number {
+  const t = Math.max(0, (tilt - TILT_SAFE) / (TILT_MAX - TILT_SAFE));
+  const v = Math.max(0, (speed - SPEED_SAFE) / (SPEED_MAX - SPEED_SAFE));
+  // A sudden jolt (a flick of the hand) startles much more than slow drift.
+  const jolt = speed > 0.8 ? (speed - 0.8) * 5 : 0;
+  return Math.min(4, t + v + jolt);
+}
+
+/** New balance (0..1). A result of 0 means the spirit slips. */
+export function updateBalance(balance: number, tilt: number, speed: number, dt: number): number {
+  const k = instability(tilt, speed);
+  const next = k > 0 ? balance - k * BALANCE_DRAIN * dt : balance + BALANCE_RECOVER * dt;
+  return clamp(next, 0, 1);
+}
+
+/** Palm centre, raw normal and tilt from the joints (no up-flip). */
+const _PALM = [0, 6, 11, 16, 21];
+export function palmFrame(hand: HandSample): void {
+  const j = hand.joints;
+  let x = 0, y = 0, z = 0;
+  for (const i of _PALM) {
+    x += j[i * 3];
+    y += j[i * 3 + 1];
+    z += j[i * 3 + 2];
+  }
+  hand.palm.x = x / _PALM.length;
+  hand.palm.y = y / _PALM.length;
+  hand.palm.z = z / _PALM.length;
+  const ax = j[21 * 3] - j[6 * 3], ay = j[21 * 3 + 1] - j[6 * 3 + 1], az = j[21 * 3 + 2] - j[6 * 3 + 2];
+  const bx = j[11 * 3] - j[0], by = j[11 * 3 + 1] - j[1], bz = j[11 * 3 + 2] - j[2];
+  const nx = ay * bz - az * by;
+  const ny = az * bx - ax * bz;
+  const nz = ax * by - ay * bx;
+  const len = Math.hypot(nx, ny, nz) || 1;
+  hand.tilt = Math.acos(Math.min(1, Math.abs(ny) / len));
 }
 
 /** Horizontal reach (metres) within which a joint can hold a folk up. */
@@ -151,6 +217,8 @@ export interface BridgeStep {
   blocked: boolean;
   /** True when the folk is currently standing on a hand. */
   onHand: boolean;
+  /** Which hand is carrying it (when onHand), else -1. */
+  hand: number;
 }
 
 /** How far ahead a folk will hop onto a hand (forgives small gaps). */
@@ -210,8 +278,10 @@ export function stepBridge(
     out.y = ahead;
     out.blocked = false;
     out.onHand = next > span.groundLength && next < L - span.groundLength;
+    out.hand = out.onHand ? _sup.hand : -1;
     return out;
   }
+  out.hand = -1;
   // Look for something to hop to within reach.
   for (let d = 0.01; d <= HOP_REACH; d += 0.01) {
     const probe = Math.min(L, s + d);
@@ -251,8 +321,8 @@ export function canBoard(
   return dy >= BOARD_LOW && dy <= BOARD_HIGH;
 }
 
-export function canLand(folk: V3, pad: V3): boolean {
-  if (distXZ(folk, pad) > LAND_RADIUS) return false;
+export function canLand(folk: V3, pad: V3, radius = LAND_RADIUS): boolean {
+  if (distXZ(folk, pad) > radius) return false;
   const dy = folk.y - pad.y;
   return dy >= LAND_LOW && dy <= LAND_HIGH;
 }

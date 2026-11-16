@@ -23,6 +23,14 @@ const CHORDS: number[][] = [
   [36, 43, 47, 50, 55], // C2 G2 B2 D3 G3
   [38, 45, 50, 52, 57], // D2 A2 D3 E3 A3
 ];
+/** Mysterious progression (level 3): Em9 – Cmaj7 – Am9 – Dsus4, low and open. */
+const CHORDS_MYST: number[][] = [
+  [40, 47, 54, 55, 62],
+  [36, 43, 50, 52, 59],
+  [33, 45, 52, 55, 59],
+  [38, 45, 50, 55, 57],
+];
+export type MusicMood = 'calm' | 'playful' | 'mysterious';
 /** Melody notes (MIDI) that sit well over every chord: G major pentatonic. */
 const MELODY = [74, 76, 79, 81, 83, 86, 88, 91];
 /** A composed 8-step motif (indices into MELODY, -1 = rest) varied over time. */
@@ -51,7 +59,14 @@ export class Music {
   private beatIndex = 0;
   private rand = rng(20261118);
   private warmth = 0;
-  private finaleAt = -1;
+  /** Finale: requested, then starts at the next bar line (beat index). */
+  private finalePending = false;
+  private finaleStart = -1;
+  /** Mood mix (crossfaded per beat) and tension 0..1. */
+  private w = { calm: 1, playful: 0, mysterious: 0 };
+  private wTarget = { calm: 1, playful: 0, mysterious: 0 };
+  private tension = 0;
+  private tensionTarget = 0;
   private started = false;
   private startTime = 0;
   private windGain: GainNode | null = null;
@@ -118,16 +133,38 @@ export class Music {
 
   /** Play the resolution at the next bar line. */
   finale(t: number) {
-    const barsSince = Math.ceil((t - this.startTime) / BAR);
-    this.finaleAt = this.startTime + barsSince * BAR;
+    void t;
+    this.finalePending = true;
+  }
+
+  /** Crossfade to a mood over the next few beats. */
+  setMood(m: MusicMood) {
+    this.wTarget = { calm: m === 'calm' ? 1 : 0, playful: m === 'playful' ? 1 : 0, mysterious: m === 'mysterious' ? 1 : 0 };
+    this.finaleStart = -1;
+  }
+
+  /** 0..1: gentle suspense layered on top of the current mood. */
+  setTension(x: number) {
+    this.tensionTarget = Math.max(0, Math.min(1, x));
+  }
+
+  /** Beat length follows the mood: calm 66, playful 82, mysterious 62 BPM; tension adds a little drive. */
+  private beatLen() {
+    const w = this.w;
+    const bpm = (66 * w.calm + 82 * w.playful + 62 * w.mysterious) / (w.calm + w.playful + w.mysterious || 1) + 12 * this.tension;
+    return 60 / bpm;
   }
 
   /** Schedule all notes that start before context time `until`. */
   scheduleUntil(until: number) {
     if (!this.started) return;
     while (this.nextBeat < until) {
-      this.scheduleBeat(this.nextBeat, this.beatIndex);
-      this.nextBeat += BEAT;
+      // Ease the mood mix and tension toward their targets once per beat (smooth crossfades).
+      for (const k of ['calm', 'playful', 'mysterious'] as const) this.w[k] += (this.wTarget[k] - this.w[k]) * 0.3;
+      this.tension += (this.tensionTarget - this.tension) * 0.35;
+      const beat = this.beatLen();
+      this.scheduleBeat(this.nextBeat, this.beatIndex, beat);
+      this.nextBeat += beat;
       this.beatIndex++;
     }
     while (this.nextRustle < until) {
@@ -142,20 +179,27 @@ export class Music {
 
   /* -------------------------------------------------------------- notes -- */
 
-  private scheduleBeat(t: number, i: number) {
+  private scheduleBeat(t: number, i: number, beat: number) {
     const barIdx = Math.floor(i / 4);
     const beatInBar = i % 4;
-    const chord = CHORDS[Math.floor(barIdx / 2) % CHORDS.length];
-    const inFinale = this.finaleAt > 0 && t >= this.finaleAt && t < this.finaleAt + BAR * 6;
-
-    if (inFinale) {
-      this.scheduleFinaleBeat(t, i - Math.round((this.finaleAt - this.startTime) / BEAT));
+    const bar = beat * 4;
+    const myst = this.w.mysterious;
+    const chordSet = myst > 0.5 ? CHORDS_MYST : CHORDS;
+    const chord = chordSet[Math.floor(barIdx / 2) % chordSet.length];
+    if (this.finalePending && beatInBar === 0) {
+      this.finalePending = false;
+      this.finaleStart = i;
+    }
+    if (this.finaleStart >= 0 && i - this.finaleStart < 24) {
+      this.scheduleFinaleBeat(t, i - this.finaleStart, beat);
       return;
     }
     // Pad: one long swell per chord (every two bars).
     if (beatInBar === 0 && barIdx % 2 === 0) {
-      for (const n of chord.slice(1)) this.pad(midi(n), t, BAR * 2.3, 0.05);
+      for (const n of chord.slice(1)) this.pad(midi(n), t, bar * 2.3, 0.05);
     }
+    this.playfulLayer(t, i, beat, chord);
+    this.tensionLayer(t, i, beat, chord);
     // Piano: bass + a gentle broken chord.
     if (this.warmth >= 1) {
       if (beatInBar === 0) this.piano(midi(chord[0] + 12), t, 2.8, 0.11);
@@ -169,7 +213,7 @@ export class Music {
     if (varied && idx >= 0) idx = Math.min(MELODY.length - 1, idx + (this.rand() < 0.5 ? 1 : 2));
     if (idx >= 0 && this.rand() < density) {
       this.musicBox(midi(MELODY[idx]), t, 0.07);
-      if (this.rand() < 0.25 * this.warmth) this.musicBox(midi(MELODY[idx]), t + BEAT / 2, 0.04);
+      if (this.rand() < 0.25 * this.warmth) this.musicBox(midi(MELODY[idx]), t + beat / 2, 0.04);
     }
     // Counter-melody an octave down once the grove is warm.
     if (this.warmth >= 3 && beatInBar === 1 && this.rand() < 0.6) {
@@ -181,7 +225,37 @@ export class Music {
     }
   }
 
-  private scheduleFinaleBeat(t: number, k: number) {
+  /** Playful mood: marimba eighths, pizzicato bass, a soft shaker and kick. */
+  private playfulLayer(t: number, i: number, beat: number, chord: number[]) {
+    const g = this.w.playful;
+    if (g < 0.05) return;
+    const b = i % 4;
+    if (b === 0 || b === 2) this.pluck(midi(chord[0] + 12), t, 0.09 * g);
+    if (b === 0) this.kick(t, 0.09 * g);
+    this.shaker(t + beat / 2, 0.03 * g);
+    // marimba: a bouncy pattern drawn from the chord and the melody scale
+    const pattern = [0, 2, 1, 3, 2, 4, 3, 1];
+    for (let s = 0; s < 2; s++) {
+      const k = pattern[(i * 2 + s) % pattern.length];
+      if (this.rand() < 0.75) this.marimba(midi(MELODY[k] - 12), t + s * (beat / 2), 0.06 * g);
+    }
+  }
+
+  /** Suspense: low pulses, a rising figure, a soft string swell. Magical, not scary. */
+  private tensionLayer(t: number, i: number, beat: number, chord: number[]) {
+    const g = this.tension;
+    if (g < 0.08) return;
+    const b = i % 4;
+    for (let s = 0; s < 2; s++) this.pulse(midi(chord[0]), t + s * (beat / 2), 0.07 * g);
+    if (b === 0 && (Math.floor(i / 4) % 2) === 1) {
+      [0, 1, 2, 3].forEach((k) => this.musicBox(midi(MELODY[2 + k]), t + k * (beat / 4), 0.04 * g));
+    }
+    if (b === 0) this.strings(midi(chord[2] + 12), t, beat * 4.2, 0.03 * g);
+  }
+
+  private scheduleFinaleBeat(t: number, k: number, beat: number) {
+    const BEAT = beat;
+    const BAR = beat * 4;
     // 6 bars: rising arpeggio over G, a lift to C, then rest on Gmaj9.
     const plan: number[][] = [
       [43, 55, 62, 67, 71, 74],
@@ -268,6 +342,88 @@ export class Music {
     o2.start(t);
     o.stop(t + 1.5);
     o2.stop(t + 0.3);
+  }
+
+  private pluck(f: number, t: number, peak: number) {
+    const o = this.ctx.createOscillator();
+    o.type = 'triangle';
+    o.frequency.value = f;
+    const g = this.env(t, 0.003, 0.35, peak);
+    o.connect(g).connect(this.musicBus);
+    o.start(t);
+    o.stop(t + 0.4);
+  }
+
+  private marimba(f: number, t: number, peak: number) {
+    const o = this.ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.value = f;
+    const o2 = this.ctx.createOscillator();
+    o2.type = 'sine';
+    o2.frequency.value = f * 3.93;
+    const g = this.env(t, 0.002, 0.45, peak);
+    const g2 = this.env(t, 0.001, 0.08, peak * 0.4);
+    o.connect(g).connect(this.musicBus);
+    o2.connect(g2).connect(this.musicBus);
+    o.start(t);
+    o2.start(t);
+    o.stop(t + 0.5);
+    o2.stop(t + 0.12);
+  }
+
+  private kick(t: number, peak: number) {
+    const o = this.ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(110, t);
+    o.frequency.exponentialRampToValueAtTime(45, t + 0.18);
+    const g = this.env(t, 0.003, 0.25, peak);
+    o.connect(g).connect(this.musicBus);
+    o.start(t);
+    o.stop(t + 0.3);
+  }
+
+  private shakerBuf: AudioBuffer | null = null;
+  private shaker(t: number, peak: number) {
+    if (!this.shakerBuf) this.shakerBuf = this.noiseBuffer(0.2);
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.shakerBuf;
+    const hp = this.ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 6000;
+    const g = this.env(t, 0.004, 0.09, peak * 6);
+    src.connect(hp).connect(g).connect(this.musicBus);
+    src.start(t);
+    src.stop(t + 0.12);
+  }
+
+  private pulse(f: number, t: number, peak: number) {
+    const o = this.ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.value = f;
+    const g = this.env(t, 0.01, 0.28, peak);
+    o.connect(g).connect(this.musicBus);
+    o.start(t);
+    o.stop(t + 0.32);
+  }
+
+  private strings(f: number, t: number, dur: number, peak: number) {
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(peak, t + dur * 0.4);
+    g.gain.linearRampToValueAtTime(0.0001, t + dur);
+    const lp = this.ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 1100;
+    for (const det of [-7, 7]) {
+      const o = this.ctx.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.value = f;
+      o.detune.value = det;
+      o.connect(lp);
+      o.start(t);
+      o.stop(t + dur + 0.05);
+    }
+    lp.connect(g).connect(this.musicBus);
   }
 
   private bell(f: number, t: number, peak: number) {
@@ -372,4 +528,3 @@ export class Music {
   }
 }
 
-export const MUSIC_BEAT = BEAT;

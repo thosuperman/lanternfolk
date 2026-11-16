@@ -10,7 +10,9 @@ import {
   dist3,
   HandSample,
   JOINT_COUNT,
+  palmFrame,
   updatePinch,
+  v3,
 } from './logic.js';
 
 const INDEX_TIP = 9;
@@ -33,6 +35,8 @@ export class HandTracker {
   private invIsland = new Matrix4();
   private tmpM = new Matrix4();
   private tmpV = new Vector3();
+  private prevPalm = [v3(), v3()];
+  private hadPalm = [false, false];
 
   constructor(private world: World) {}
 
@@ -46,6 +50,7 @@ export class HandTracker {
       this.hands[1].present = false;
       this.hands[0].pinching = false;
       this.hands[1].pinching = false;
+      this.hadPalm[0] = this.hadPalm[1] = false;
       this.lostFor += dt;
       return;
     }
@@ -111,6 +116,19 @@ export class HandTracker {
       this.tmpM.fromArray(this.poses, 0);
       this.tmpM.premultiply(this.toLocal);
       sample.wrist.set(this.tmpM.elements);
+      // Palm centre, tilt and smoothed speed (for the spirits' balance).
+      const prev = this.prevPalm[idx];
+      palmFrame(sample);
+      if (this.hadPalm[idx] && dt > 0) {
+        const v = Math.hypot(sample.palm.x - prev.x, sample.palm.y - prev.y, sample.palm.z - prev.z) / dt;
+        sample.speed += (Math.min(v, 3) - sample.speed) * Math.min(1, dt * 18);
+      } else {
+        sample.speed = 0;
+      }
+      prev.x = sample.palm.x;
+      prev.y = sample.palm.y;
+      prev.z = sample.palm.z;
+      this.hadPalm[idx] = true;
       const j = sample.joints;
       sample.indexTip.x = j[INDEX_TIP * 3];
       sample.indexTip.y = j[INDEX_TIP * 3 + 1];
@@ -130,7 +148,13 @@ export class HandTracker {
       this.tmpV.set(sample.indexTip.x, sample.indexTip.y, sample.indexTip.z);
       this.worldIndexTip[idx].copy(island.localToWorld(this.tmpV));
     }
-    for (const s of this.hands) if (!s.present) s.pinching = false;
+    for (let i = 0; i < 2; i++) {
+      const s = this.hands[i];
+      if (!s.present) {
+        s.pinching = false;
+        this.hadPalm[i] = false;
+      }
+    }
     if (any) {
       this.everTracked = true;
       this.lostFor = 0;

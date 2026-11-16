@@ -59,7 +59,7 @@ describe('supportAt', () => {
 
 describe('stepBridge', () => {
   const span: BridgeSpan = { from: v3(0, 0, 0.2), to: v3(0, 0, 0.1), groundLength: 0.012 };
-  const step: BridgeStep = { s: 0, y: 0, blocked: false, onHand: false };
+  const step: BridgeStep = { s: 0, y: 0, blocked: false, onHand: false, hand: -1 };
 
   it('waits at the edge with no hand', () => {
     stepBridge(span, 0.012, 0.04, 0.016, [none(), none()], step);

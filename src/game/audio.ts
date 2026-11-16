@@ -3,7 +3,7 @@
  * runtime, so the project ships no third-party audio files.
  */
 
-import { Music } from './music.js';
+import { Music, MusicMood } from './music.js';
 
 const PENTA = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24];
 const BASE_HZ = 392; // G4
@@ -257,6 +257,55 @@ export class Sound {
     this.music.stop(this.now());
   }
 
+  /** A gentle "whoops": a falling glide and a soft thud (never harsh). */
+  slip(pan = 0) {
+    this.log('slip', pan);
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const t = this.now();
+    const o = ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(760, t);
+    o.frequency.exponentialRampToValueAtTime(260, t + 0.38);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.06, t + 0.03);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
+    const p = ctx.createStereoPanner();
+    p.pan.value = pan;
+    o.connect(g).connect(p).connect(this.master);
+    p.connect(this.reverb);
+    o.start(t);
+    o.stop(t + 0.5);
+    const k = ctx.createOscillator();
+    k.type = 'sine';
+    k.frequency.setValueAtTime(140, t + 0.32);
+    k.frequency.exponentialRampToValueAtTime(60, t + 0.5);
+    const kg = ctx.createGain();
+    kg.gain.setValueAtTime(0.0001, t + 0.32);
+    kg.gain.linearRampToValueAtTime(0.05, t + 0.34);
+    kg.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
+    k.connect(kg).connect(this.master);
+    k.start(t + 0.32);
+    k.stop(t + 0.65);
+  }
+
+  /** Crossfade the score to a level's mood. */
+  setMood(m: MusicMood) {
+    this.log('mood', m === 'calm' ? 0 : m === 'playful' ? 1 : 2);
+    this.music?.setMood(m);
+  }
+
+  private lastTension = -1;
+  /** Called every frame; only meaningful changes are applied (and logged). */
+  setTension(x: number) {
+    const q = Math.round(x * 10) / 10;
+    if (q === this.lastTension) return;
+    this.lastTension = q;
+    this.log('tension', q);
+    this.music?.setTension(q);
+  }
+
   /** Each rescued spirit warms the music by one layer. */
   setWarmth(w: number) {
     this.log('warmth', w);
@@ -289,7 +338,7 @@ export class Sound {
     s.attach(ctx);
     // State cues (music start/stop, warmth, mute) from before the clip still apply;
     // one-shot sound effects from before the clip are dropped.
-    const state = new Set(['startAmbience', 'stopAmbience', 'warmth', 'musicMuted', 'musicFinale']);
+    const state = new Set(['startAmbience', 'stopAmbience', 'warmth', 'musicMuted', 'musicFinale', 'mood', 'tension']);
     const sorted = events.filter((e) => state.has(e.n) || e.t >= t0 - 300).sort((a, b) => a.t - b.t);
     for (const e of sorted) {
       const at = Math.max(0, (e.t - t0) / 1000);
@@ -298,6 +347,7 @@ export class Sound {
       s.offset = at;
       const fn = (s as unknown as Record<string, (...x: number[]) => void>)[e.n];
       if (e.n === 'musicMuted') s.setMusicMuted(!!e.a[0]);
+      else if (e.n === 'mood') s.setMood((['calm', 'playful', 'mysterious'] as const)[e.a[0]] ?? 'calm');
       else if (typeof fn === 'function') fn.apply(s, e.a);
     }
     s.offset = 0;

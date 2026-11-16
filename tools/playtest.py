@@ -113,9 +113,35 @@ def poke(target):
     seq([
         {"label": "approach", "position": P(target, dz=0.06, dy=0.03), "anchor": "index-tip", "poseId": "point", "duration": 0.7},
         {"label": "touch", "position": P(target), "anchor": "index-tip", "duration": 0.4},
-        {"label": "hold", "duration": 0.05},
+        {"label": "hold", "duration": 0.3},
         {"label": "lift", "position": P(target, dy=0.12, dz=0.08), "anchor": "index-tip", "duration": 0.5},
     ])
+
+
+FLAT = {"fingers": [-1, 0, 0], "palm": "up"}
+PALM = "middle-finger-metacarpal"  # anchor roughly at the palm centre
+
+
+def palm_at(target, dy=0.0, duration=1.0, label="palm", **extra):
+    return {"label": label, "position": P(target, dy=dy), "anchor": PALM, "poseId": "flat", "orientation": FLAT, "duration": duration, **extra}
+
+
+def detour(frm, to, branch, up=0.12):
+    """Waypoints that lift up beside the pad (away from the branch), cross over high, then descend."""
+    ax, az = frm[0] - branch[0], frm[2] - branch[2]
+    n = (ax * ax + az * az) ** 0.5 or 1.0
+    side = [frm[0] + ax / n * 0.035, frm[1] + up, frm[2] + az / n * 0.035]
+    over = [to[0], max(frm[1] + up, to[1] + 0.07), to[2]]
+    return [
+        palm_at(side, duration=1.6, label="up"),
+        palm_at(over, duration=1.8, label="over"),
+        palm_at(to, dy=-0.01, duration=1.2, label="down"),
+        {"label": "hold", "duration": 0.8},
+    ]
+
+
+def f(i):
+    return state()["folk"][i]
 
 
 def main():
@@ -129,15 +155,14 @@ def main():
     sp = lambda n: os.path.join(shots, n) if shots else ""
 
     st = cli("xr", "status")
-    if not st["data"]["result"].get("sessionActive", st["data"]["result"].get("active")):
+    if not st["data"]["result"].get("sessionActive"):
         cli("xr", "enter")
         time.sleep(1.5)
     cli("xr", "set-input-mode", payload={"mode": "hand"})
-    cli("xr", "set-transform", payload={"device": "headset", "position": {"x": 0, "y": 1.2, "z": 0}})
+    cli("xr", "set-transform", payload={"device": "headset", "position": {"x": 0, "y": 1.6, "z": 0}, "orientation": {"pitch": -28, "yaw": 0, "roll": 0}})
     time.sleep(0.3)
     ev("lanternfolk.recenter()")
     ev(f"lanternfolk.skipTo({args.start})")
-    cli("xr", "look-at", payload={"device": "headset", "target": {"x": 0, "y": 0.86, "z": -0.45}})
     rest("hand-left")
     rest()
     results = []
@@ -148,134 +173,159 @@ def main():
 
     t = ev("lanternfolk.targets")
 
+    # ------------------------------------------------------------ Chapter 1
     if args.start <= 0:
         shot(sp("01_intro.png"))
         poke(t["folk1a"])
-        s = wait_for(lambda s: s["folk"][0]["help"] == "bridge", 15, "folk1 waits at gap")
-        check("L1 poke wakes folk, it walks to the gap and asks for help", True)
-        shot(sp("02_wait_bridge.png"))
-        h = t["hint1"]
-        flat = {"fingers": [-1, 0, 0], "palm": "up"}
-        # Robustness, deterministic: an in-page watcher (started *before* the hand arrives) waits
-        # until the spirit steps onto the hand, then simulates tracking loss in the game's input
-        # layer and records what follows. XR CLI commands run alongside browser scripts.
-        import threading
-        box = {}
-        watcher = threading.Thread(target=lambda: box.update(trace=ev("""(async () => {
-          const F = () => lanternfolk.folk[0];
-          const t0 = performance.now();
-          while (F().state !== 'bridge' && performance.now() - t0 < 12000) await new Promise(r => setTimeout(r, 10));
-          const onHand = F().state;
-          // wait until it is ~3 cm out over the gap (past the solid edge, far from the other side)
-          const inner = __lf.zones[0].folk[0];
-          while (inner.s < 0.03 && performance.now() - t0 < 15000) await new Promise(r => setTimeout(r, 5));
-          lanternfolk.simulateTrackingLoss(5);
-          await new Promise(r => setTimeout(r, 700));
-          const during = F().state;
-          await new Promise(r => setTimeout(r, 3800));
-          return [onHand, during, F().state];
-        })()""")))
-        watcher.start()
-        time.sleep(2.0)  # let the watcher start before the hand moves
-        seq([{"label": "bridge", "position": P(h, dy=0.0), "anchor": "grasp", "poseId": "flat", "orientation": flat, "duration": 1.0}])
-        watcher.join(timeout=30)
-        trace = box.get("trace", ["?", "?", "?"])
-        check("L1 spirit steps onto the hand after a short hesitation", trace[0] == "bridge", trace[0])
-        check("L1 tracking lost mid-crossing: spirit hovers instead of falling", trace[1] == "hover", trace[1])
-        check("L1 ...then drifts back to the edge and waits (progress kept)", trace[2] == "wait", trace[2])
-        time.sleep(1.0)
-        seq([{"label": "bridge-again", "position": P(h, dy=0.0), "anchor": "grasp", "poseId": "flat", "orientation": flat, "duration": 1.0}])
-        time.sleep(1.2)
-        shot(sp("03_on_hand.png"))
-        s = wait_for(lambda s: s["folk"][0]["state"] == "seated", 20, "folk1 seated")
-        check("L1 folk crosses the hand bridge and reaches the tree", True)
+        wait_for(lambda s: s["folk"][0]["help"] == "bridge" and s["folk"][0]["seg"] == 1, 20, "first gap")
+        check("Ch1 touch wakes the shy spirit; it walks to the first gap and asks for help", True)
+        shot(sp("02_first_gap.png"))
+        seq([palm_at(t["bridge1_0"], dy=-0.02), {"label": "hold", "duration": 0.5}])
+        wait_for(lambda s: s["folk"][0]["seg"] >= 2, 15, "crossed gap 1")
+        check("Ch1 it crosses the first gap on a flat palm", True)
         rest()
-        wait_for(lambda s: s["level"] == 1 and s["phase"] == "play", 15, "level 2 starts")
-        check("L1 -> L2 transition", True)
-        time.sleep(0.5)
+        wait_for(lambda s: s["folk"][0]["help"] == "bridge" and s["folk"][0]["seg"] == 3, 20, "second gap")
+        # Failure: tip the palm steeply while it is crossing -> it slips back to the checkpoint.
+        # Failure: offer a steeply tilted palm (on its side). The spirit steps onto it, wobbles and slips.
+        tilted = palm_at(t["bridge1_1"], dy=-0.02)
+        tilted["orientation"] = {"fingers": [-1, 0, 0], "palm": "forward"}
+        seq([tilted])
+        ev("""(async () => { const F = __lf.zones[0].folk[0]; const t0 = performance.now();
+          while (F.slips < 1 && performance.now() - t0 < 8000) await new Promise(r => setTimeout(r, 10)); return F.slips; })()""")
+        cli("xr", "set-transform", payload={"device": "hand-right", "anchor": "wrist", "position": {"x": 0.22, "y": 0.75, "z": -0.15}})
+        s = wait_for(lambda s: s["folk"][0]["slips"] >= 1, 6, "slip")
+        check("Ch1 failure: tipping the palm makes the spirit lose balance", True, f"slips={s['folk'][0]['slips']}")
+        rest()
+        s = wait_for(lambda s: s["folk"][0]["state"] == "wait" and s["folk"][0]["seg"] == 3, 8, "back at checkpoint")
+        check("Ch1 ...it floats back to its checkpoint (same gap), dizzy but fine", True, s["folk"][0]["emotion"])
+        time.sleep(1.5)
+        seq([palm_at(t["bridge1_1"], dy=-0.02), {"label": "hold", "duration": 0.5}])
+        s = wait_for(lambda s: s["folk"][0]["state"] == "seated", 25, "home")
+        check("Ch1 retry: steady palm, it crosses the wide gap and reaches the tree", True)
+        rest()
+        wait_for(lambda s: s["level"] == 1 and s["phase"] == "play", 15, "chapter 2")
+        check("Ch1 -> Ch2 transition", True)
+        time.sleep(3.5)  # chapter card
         t = ev("lanternfolk.targets")
 
+    # ------------------------------------------------------------ Chapter 2
     if args.start <= 1:
-        shot(sp("04_level2.png"))
+        shot(sp("03_ch2.png"))
         poke(t["folk2a"])
-        wait_for(lambda s: s["folk"][1]["help"] == "lift", 15, "folk2 waits for lift")
-        check("L2 folk asks for a lift", True)
-        h, h2 = t["hint2"], t["hintTo2"]
+        wait_for(lambda s: s["folk"][1]["help"] == "lift" and s["folk"][1]["seg"] == 1, 20, "lift 1")
+        check("Ch2 the playful spirit asks for a lift", True)
+        seq([palm_at(t["lift2_0"], dy=-0.005), {"label": "hold", "duration": 1.2}])
+        s = wait_for(lambda s: s["folk"][1]["state"] == "ride", 6, "board")
+        check("Ch2 it climbs onto the palm", True)
+        # Failure 1: a fast flick makes it lose balance.
         seq([
-            {"label": "offer", "position": P(h, dy=0.05), "anchor": "grasp", "poseId": "flat",
-             "orientation": {"fingers": [-1, 0, 0], "palm": "up"}, "duration": 1.0},
-            {"label": "wait", "duration": 1.0},
+            palm_at(t["lift2_0"], dy=0.16, duration=0.15, label="shake-up"),
+            palm_at(t["lift2_0"], dy=0.02, duration=0.15, label="shake-down"),
+            palm_at(t["lift2_0"], dy=0.16, duration=0.15, label="shake-up2"),
+            {"label": "hold", "duration": 0.6},
         ])
-        s = state()
-        check("L2 folk boards the palm", s["folk"][1]["state"] in ("hop-on", "ride"), s["folk"][1]["state"])
-        # Robustness: tracking lost mid-ride.
-        cli("xr", "set-connected", payload={"device": "hand-right", "connected": False})
-        s = wait_for(lambda s: s["folk"][1]["state"] in ("return", "wait"), 6, "float back on tracking loss")
-        check("L2 tracking lost mid-ride: spirit floats safely back to a pad", True, s["folk"][1]["state"])
-        cli("xr", "set-connected", payload={"device": "hand-right", "connected": True})
-        s = wait_for(lambda s: s["folk"][1]["state"] in ("wait", "hop-on", "ride"), 6, "waiting again")
-        if s["folk"][1]["state"] == "wait":
-          seq([{"label": "offer-again", "position": P(h, dy=0.05), "anchor": "grasp", "poseId": "flat",
-              "orientation": {"fingers": [-1, 0, 0], "palm": "up"}, "duration": 1.0}, {"label": "wait", "duration": 1.2}])
-        s = wait_for(lambda s: s["folk"][1]["state"] in ("hop-on", "ride"), 5, "re-board")
-        check("L2 tracking reacquired: spirit boards again", True)
-        seq([{"label": "raise", "position": P(h, dy=0.09, dz=0.01), "anchor": "grasp", "duration": 1.0}])
-        shot(sp("05_riding.png"))
-        seq([{"label": "to-ledge", "position": P(h2, dy=0.03), "anchor": "grasp", "duration": 1.2}, {"label": "hold", "duration": 1.0}])
-        s = wait_for(lambda s: s["folk"][1]["state"] in ("walk", "seated"), 10, "folk2 steps off")
-        check("L2 folk rides the hand up and steps off at the ledge", True)
+        s = wait_for(lambda s: s["folk"][1]["slips"] >= 1, 5, "flick slip")
+        check("Ch2 failure: shaking the hand makes it slip back", True, s["folk"][1]["emotion"])
         rest()
-        wait_for(lambda s: s["folk"][1]["state"] == "seated", 15, "folk2 seated")
-        wait_for(lambda s: s["level"] == 2 and s["phase"] == "play", 15, "level 3 starts")
-        check("L2 -> L3 transition", True)
-        time.sleep(0.5)
+        wait_for(lambda s: s["folk"][1]["state"] == "wait" and s["folk"][1]["seg"] == 1, 8, "back on pad")
+        time.sleep(1.6)
+        # Failure 2: carrying it into a swinging branch.
+        t = ev("lanternfolk.targets")
+        seq([palm_at(t["lift2_0"], dy=-0.005), {"label": "hold", "duration": 1.2}])
+        wait_for(lambda s: s["folk"][1]["state"] == "ride", 6, "board again")
+        t = ev("lanternfolk.targets")
+        seq([palm_at(t["branch0"], dy=-0.045, duration=0.9, label="into-branch"), {"label": "hold", "duration": 0.8}])
+        s = wait_for(lambda s: s["folk"][1]["slips"] >= 2, 5, "branch bump")
+        check("Ch2 failure: bumping a swinging branch knocks it back to the pad", True, s["folk"][1]["state"])
+        rest()
+        wait_for(lambda s: s["folk"][1]["state"] == "wait" and s["folk"][1]["seg"] == 1, 8, "pad again")
+        time.sleep(1.6)
+        # Success: up beside the pad, over the branch, down onto the ledge; then again to the top.
+        t = ev("lanternfolk.targets")
+        seq([palm_at(t["lift2_0"], dy=-0.005), {"label": "hold", "duration": 1.2}])
+        wait_for(lambda s: s["folk"][1]["state"] == "ride", 6, "board 3")
+        t = ev("lanternfolk.targets")
+        seq(detour(t["lift2_0"], t["liftTo2_0"], t["branch0"]))
+        s = wait_for(lambda s: s["folk"][1]["seg"] >= 2, 6, "mid ledge")
+        check("Ch2 lifted up and over the branch onto the middle ledge (checkpoint)", True)
+        rest()
+        wait_for(lambda s: s["folk"][1]["help"] == "lift" and s["folk"][1]["seg"] == 3, 12, "lift 2")
+        t = ev("lanternfolk.targets")
+        seq([palm_at(t["lift2_1"], dy=-0.005), {"label": "hold", "duration": 1.2}])
+        wait_for(lambda s: s["folk"][1]["state"] == "ride", 6, "board 4")
+        t = ev("lanternfolk.targets")
+        seq(detour(t["lift2_1"], t["liftTo2_1"], t["branch1"], up=0.1))
+        s = wait_for(lambda s: s["folk"][1]["seg"] >= 4 or s["folk"][1]["state"] == "seated", 8, "top")
+        check("Ch2 second lift past the other branch to the top", True)
+        rest()
+        wait_for(lambda s: s["folk"][1]["state"] == "seated", 15, "home 2")
+        wait_for(lambda s: s["level"] == 2 and s["phase"] == "play", 15, "chapter 3")
+        check("Ch2 -> Ch3 transition", True)
+        time.sleep(3.5)
         t = ev("lanternfolk.targets")
 
+    # ------------------------------------------------------------ Chapter 3
     if args.start <= 2:
-        shot(sp("06_level3.png"))
+        shot(sp("04_ch3.png"))
         poke(t["folk3a"])
         poke(t["folk3b"])
-        wait_for(lambda s: s["folk"][2]["help"] == "leaf", 15, "folk3a waits for leaf")
-        check("L3 both folk wake; they ask for the leaf bridge", True)
+        wait_for(lambda s: s["folk"][2]["help"] == "leaf", 20, "leaf needed")
+        check("Ch3 both spirits wake; they ask for the leaf bridge", True)
         t = ev("lanternfolk.targets")
         leaf, slot = t["leaf"], t["leafSlot"]
         seq([
             {"label": "grab", "position": P(leaf), "anchor": "grasp", "approach": {"distance": 0.05}, "pinch": {"value": 1, "at": "arrival"}, "duration": 1.0},
             {"label": "carry", "position": P(slot, dy=0.01), "anchor": "grasp", "duration": 1.2},
+            {"label": "release", "pinch": 0, "duration": 0.2},
+            {"label": "away", "position": P(slot, dy=0.12, dz=0.1), "anchor": "grasp", "duration": 0.6},
         ])
-        shot(sp("07_carry_leaf.png"))
-        seq([{"label": "release", "pinch": 0, "duration": 0.2}, {"label": "away", "position": P(slot, dy=0.12, dz=0.1), "anchor": "grasp", "duration": 0.6}])
-        placed = ev("lanternfolk.folk[2].help === null || lanternfolk.folk[2].state === 'bridge'")
-        check("L3 pinch-carried leaf snaps into the gap", bool(placed))
         rest()
         wait_for(lambda s: s["folk"][2]["state"] == "seated" and s["folk"][3]["state"] == "seated", 25, "both seated")
-        check("L3 both folk cross the leaf and reach the tree", True)
+        check("Ch3 leaf laid; both cross and reach the tree", True)
         wait_for(lambda s: s["phase"] == "star", 10, "star phase")
         t = ev("lanternfolk.targets")
 
-    shot(sp("08_star.png"))
-    star, sock = t["star"], t["socket"]
+    # ------------------------------------------------------------ Star
+    shot(sp("05_star.png"))
+    t = ev("lanternfolk.targets")
+    seq([palm_at(t["star"], dy=-0.035, duration=1.0, label="scoop"), {"label": "hold", "duration": 0.6}])
+    s = ev("lanternfolk.star")
+    check("Star: scooped onto the open palm", s["rider"] >= 0, json.dumps(s))
+    # Failure: shake it and the star rolls off, floating back to its islet.
+    t = ev("lanternfolk.targets")
     seq([
-        {"label": "grab", "position": P(star), "anchor": "grasp", "approach": {"distance": 0.05}, "pinch": {"value": 1, "at": "arrival"}, "duration": 1.0},
-        {"label": "carry", "position": P(sock, dy=0.01), "anchor": "grasp", "duration": 1.4},
-        {"label": "release", "pinch": 0, "duration": 0.2},
-        {"label": "away", "position": P(sock, dy=0.05, dz=0.15), "duration": 0.6},
+        palm_at(t["star"], dy=0.18, duration=0.15, label="shake-up"),
+        palm_at(t["star"], dy=-0.04, duration=0.15, label="shake-down"),
+        palm_at(t["star"], dy=0.18, duration=0.15, label="shake-up2"),
+        palm_at(t["star"], dy=-0.04, duration=0.15, label="shake-down2"),
+    ])
+    cli("xr", "set-transform", payload={"device": "hand-right", "anchor": "wrist", "position": {"x": 0.22, "y": 0.75, "z": -0.15}})
+    s = ev("lanternfolk.star")
+    check("Star failure: shaking makes it roll off and float home", s["rider"] < 0 and not s["placed"], json.dumps(s))
+    rest()
+    time.sleep(1.6)
+    t = ev("lanternfolk.targets")
+    seq([palm_at(t["star"], dy=-0.035, duration=1.0, label="scoop-again"), {"label": "hold", "duration": 0.6}])
+    s = ev("lanternfolk.star")
+    check("Star retry: scooped again", s["rider"] >= 0, json.dumps(s))
+    t = ev("lanternfolk.targets")
+    sock = t["socket"]
+    seq([
+        palm_at([sock[0], sock[1] - 0.12, sock[2] + 0.05], duration=1.8, label="rise"),
+        palm_at([sock[0], sock[1] - 0.045, sock[2]], duration=1.4, label="to-ring"),
+        {"label": "hold", "duration": 0.6},
     ])
     wait_for(lambda s: s["phase"] in ("finale", "ending"), 6, "finale")
-    check("Finale: star placed on the tree", True)
-    time.sleep(8)
-    s = state()
-    gathered = [f["state"] for f in s["folk"]]
-    check("Finale: rescued spirits gather; first friend comes to thank you",
-          all(g in ("gather", "thank") for g in gathered) and "thank" in gathered, ",".join(gathered))
+    check("Finale: carried the star up steadily and set it on the tree", True)
     rest()
-    time.sleep(3.5)
-    shot(sp("09_finale.png"))
-    wait_for(lambda s: s["phase"] == "ending", 12, "ending")
+    time.sleep(8)
+    shot(sp("06_finale.png"))
+    s = state()
+    gathered = [x["state"] for x in s["folk"]]
+    check("Finale: rescued spirits gather; the first friend comes to thank you",
+          all(g in ("gather", "thank") for g in gathered) and "thank" in gathered, ",".join(gathered))
+    wait_for(lambda s: s["phase"] == "ending", 14, "ending")
     t = ev("lanternfolk.targets")
-    shot(sp("10_ending.png"))
-    time.sleep(1.2)
-    # Music bell (hands-only mute toggle)
     before = ev("lanternfolk.musicMuted")
     poke(t["bell"])
     time.sleep(0.4)
@@ -283,6 +333,7 @@ def main():
     check("Music bell toggles music with a touch", before != after, f"{before}->{after}")
     poke(t["bell"])
     rest()
+    time.sleep(1.0)
     poke(t["replay"])
     wait_for(lambda s: s["phase"] in ("transition", "play", "intro") and s["level"] == 0, 8, "replay")
     check("Ending: touching the lantern restarts the game", ev("lanternfolk.rescued") == 0)

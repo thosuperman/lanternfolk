@@ -16,23 +16,28 @@ import {
   VisibilityState,
 } from '@iwsdk/core';
 import { sound } from './audio.js';
-import { Folk, FolkEvents } from './folk.js';
+import { Folk, FolkEvents, Obstacle } from './folk.js';
 import { HandTracker } from './hands.js';
 import { HandVisual } from './handVisual.js';
-import { CENTRAL_RADIUS, LevelPlan, LEVELS, SOCKET, STAR_START } from './levels.js';
+import { CENTRAL_RADIUS, LevelPlan, LEVELS, obstacleAt, SOCKET, starIsletAt } from './levels.js';
 import {
+  canBoard,
   canSnap,
   copyV3,
   dist3,
   grabbingHand,
   isPoking,
   lerpV3,
+  palmSurface,
   smoothstep,
   supportAt,
+  updateBalance,
   V3,
   v3,
 } from './logic.js';
 import {
+  branchMesh,
+  Drifters,
   flatMaterial,
   FlowerField,
   glowSprite,
@@ -48,6 +53,7 @@ import {
   ringHint,
   rng,
   sky,
+  SkyDome,
   starMesh,
 } from './scenery.js';
 
@@ -79,7 +85,8 @@ export interface GameDebug {
   level: number;
   musicMuted: boolean;
   rescued: number;
-  folk: { state: string; help: string | null; x: number; y: number; z: number }[];
+  folk: { state: string; help: string | null; emotion: string; seg: number; slips: number; balance: number; x: number; y: number; z: number }[];
+  star: { rider: number; held: number; placed: boolean; balance: number };
   targets: Record<string, [number, number, number]>;
   skipTo(level: number): void;
   restart(): void;
@@ -88,6 +95,8 @@ export interface GameDebug {
   simulateTrackingLoss(seconds: number): void;
   probe(level: number): unknown;
 }
+
+const NO_OBSTACLES: Obstacle[] = [];
 
 export class LanternfolkSystem extends createSystem({}) {
   private island!: Group;
@@ -121,6 +130,18 @@ export class LanternfolkSystem extends createSystem({}) {
   private starHeld = -1;
   private starPlaced = false;
   private starReturn = 0;
+  /** Star carried on an open palm (hand index), with its own balance. */
+  private starRider = -1;
+  private starBalance = 1;
+  private starIslet!: Group;
+  private starHome = v3();
+  private obstacles: { mesh: ReturnType<typeof branchMesh>; live: Obstacle; plan: LevelPlan['obstacles'][number] }[] = [];
+  private skyDome!: SkyDome;
+  private lanternsDrift!: Drifters;
+  private starsDrift!: Drifters;
+  private chapterTime = 0;
+  private encourageUntil = 0;
+  private encourageText: [string, string] = ['', ''];
   private replay!: ReturnType<typeof pathLantern>;
   private replayPos = v3(0, 0.07, 0.2);
   private tmp = new Vector3();
@@ -163,6 +184,8 @@ export class LanternfolkSystem extends createSystem({}) {
     moon.position.set(-1, 2, -0.5);
     root.add(moon);
 
+    this.skyDome = new SkyDome();
+    root.add(this.skyDome.mesh);
     this.skyStars = sky();
     root.add(this.skyStars.group);
 
@@ -194,19 +217,22 @@ export class LanternfolkSystem extends createSystem({}) {
 
     for (const plan of LEVELS) {
       const b = new GeoBatch();
-      const c = plan.islet.center;
-      islet(b, { radius: plan.islet.radius, depth: plan.islet.depth, seed: plan.islet.seed }, [c.x, c.y, c.z]);
+      const spots: [number, number, number][] = [];
+      for (const isl of plan.islets) {
+        const c = isl.center;
+        islet(b, { radius: isl.radius, depth: isl.depth, seed: isl.seed }, [c.x, c.y, c.z]);
+        const fr = rng(isl.seed + 1);
+        const n = Math.round(12 * (isl.radius / 0.06));
+        for (let i = 0; i < n; i++) {
+          const a = fr() * Math.PI * 2;
+          const d = isl.radius * (0.35 + fr() * 0.55);
+          spots.push([c.x + Math.cos(a) * d, c.y, c.z + Math.sin(a) * d]);
+        }
+      }
       const mat = flatMaterial();
       mat.color.copy(DORMANT);
       this.island.add(new Mesh(b.build(), mat));
-      const fr = rng(plan.islet.seed + 1);
-      const spots: [number, number, number][] = [];
-      for (let i = 0; i < 12; i++) {
-        const a = fr() * Math.PI * 2;
-        const d = plan.islet.radius * (0.35 + fr() * 0.55);
-        spots.push([c.x + Math.cos(a) * d, c.y, c.z + Math.sin(a) * d]);
-      }
-      const flowers = new FlowerField(spots, plan.islet.seed);
+      const flowers = new FlowerField(spots, plan.islets[0].seed);
       this.island.add(flowers.group);
       const lanterns = plan.lanterns.map((p) => {
         const l = pathLantern();
@@ -218,7 +244,21 @@ export class LanternfolkSystem extends createSystem({}) {
       const events = this.folkEvents(zone);
       zone.folk = plan.folk.map((fp) => new Folk(fp, this.island, events));
       this.zones.push(zone);
+      for (const o of plan.obstacles) {
+        const mesh = branchMesh();
+        this.island.add(mesh.group);
+        this.obstacles.push({ mesh, plan: o, live: { a: v3(), b: v3(), radius: o.radius } });
+      }
     }
+    // The star's own little floating islet (level 3), which drifts slowly.
+    const sb = new GeoBatch();
+    islet(sb, { radius: 0.028, depth: 0.04, seed: 41, decor: false }, [0, -0.012, 0]);
+    this.starIslet = new Group();
+    this.starIslet.add(new Mesh(sb.build(), flatMaterial(0x2a3a6a, 0.3)));
+    this.island.add(this.starIslet);
+    this.lanternsDrift = new Drifters('lanterns', 14, 61);
+    this.starsDrift = new Drifters('stars', 40, 62);
+    this.island.add(this.lanternsDrift.group, this.starsDrift.group);
     // Centre island is also dormant until the end.
     (centreMesh.material as MeshLambertMaterial).color.copy(DORMANT).lerp(ALIVE, 0.35);
     this.zones.forEach((z) => (z.mat.userData.centre = centreMesh.material));
@@ -263,6 +303,23 @@ export class LanternfolkSystem extends createSystem({}) {
       hop: (f) => sound.hop(this.pan(f.position)),
       worry: (f) => sound.call(this.pan(f.position)),
       cheer: (f) => sound.cheer(this.pan(f.position)),
+      slip: (f, reason) => {
+        sound.slip(this.pan(f.position));
+        this.motes.burst(f.position.x, f.position.y + 0.02, f.position.z, 8, 0.02, 0.02);
+        // Friends at the tree look worried; the grove dims for a moment.
+        this.rescued.forEach((r) => r.worry());
+        this.dimFor = 1.2;
+        const tries = f.slips;
+        const text: [string, string] =
+          reason === 'branch'
+            ? ['Oof! A branch', 'Wait for a gap, then lift me past it']
+            : reason === 'tracking'
+              ? ['Where did your hand go?', 'I floated back. Let\'s try again']
+              : tries >= 2
+                ? ['Slowly, slowly…', 'Keep your palm flat and move gently']
+                : ['Whoa! Too wobbly', 'It\'s okay. Let\'s try again'];
+        this.encourage(text, 3.2);
+      },
       arrive: (f) => {
         sound.arrive();
         this.motes.burst(f.position.x, f.position.y + 0.03, f.position.z, 24, 0.03, 0.07);
@@ -271,6 +328,13 @@ export class LanternfolkSystem extends createSystem({}) {
         if (zone.folk.every((x) => x.isSeated)) this.completeLevel();
       },
     };
+  }
+
+  private dimFor = 0;
+
+  private encourage(text: [string, string], seconds: number) {
+    this.encourageText = text;
+    this.encourageUntil = this.clock + seconds;
   }
 
   /** Order in which spirits came home (they remember, and so does the grove). */
@@ -435,8 +499,16 @@ export class LanternfolkSystem extends createSystem({}) {
     this.resetLeaf();
     this.starPlaced = false;
     this.starHeld = -1;
-    copyV3(this.starPos, STAR_START);
+    this.starRider = -1;
+    this.starBalance = 1;
+    this.starReturn = 0;
+    starIsletAt(LEVELS[2].star!, 0, this.starHome);
+    copyV3(this.starPos, this.starHome);
     this.star.group.visible = false;
+    this.starIslet.visible = false;
+    this.applyAtmosphere(0, true);
+    this.chapterTime = 0;
+    this.encourageUntil = 0;
     this.replay.group.visible = false;
     this.tree.canopyMat.emissiveIntensity = 0;
     this.treeLight.intensity = 0;
@@ -475,8 +547,20 @@ export class LanternfolkSystem extends createSystem({}) {
     this.setPhase('celebrate');
   }
 
+  /** Sky, light, particles and music mood for a level. */
+  private applyAtmosphere(i: number, instant = false) {
+    const a = LEVELS[i].atmosphere;
+    this.skyDome.set(a.skyTop, a.skyBottom, instant);
+    this.hemi.color.set(a.hemi);
+    this.lanternsDrift.target = a.particles === 'lanterns' ? 1 : i > 1 ? 0.35 : 0;
+    this.starsDrift.target = a.particles === 'stars' ? 1 : 0;
+    sound.setMood(LEVELS[i].mood);
+  }
+
   private goToLevel(i: number) {
     this.level = i;
+    this.applyAtmosphere(i);
+    this.chapterTime = 0;
     this.yawFrom = this.yaw;
     this.yawTo = -LEVELS[i].angle;
     // always rotate the same way (counter-clockwise reveal)
@@ -530,16 +614,23 @@ export class LanternfolkSystem extends createSystem({}) {
     const hands = this.hands.hands;
 
     this.updateIslandTransform(dt);
+    this.updateObstacles();
+    const live = this.level === 1 ? this.liveObstacles : NO_OBSTACLES;
     for (const z of this.zones) {
       for (const f of z.folk) {
         f.leafPlaced = this.leafPlaced;
-        f.update(dt, hands);
+        f.update(dt, hands, z === this.zones[this.level] ? live : NO_OBSTACLES);
       }
     }
+    this.skyDome.update(dt);
+    this.lanternsDrift.update(dt, this.clock);
+    this.starsDrift.update(dt, this.clock);
+    this.updateMood(dt);
+    this.dimFor = Math.max(0, this.dimFor - dt);
     const carrying = this.zones.some((z) => z.folk.some((f) => f.state === 'ride' || f.state === 'bridge'));
     // A hand held where a waiting spirit needs it lights up: "this is a valid path".
     const waiting = this.zones[this.level]?.folk.some((f) => f.help === 'bridge' || f.help === 'lift');
-    const hint = LEVELS[this.level].hint;
+    const hint = this.currentHint() ?? LEVELS[this.level].label;
     this.highlight[0] = carrying || this.leafHeld === 0 || this.starHeld === 0 || (!!waiting && this.handIdxNear(0, hint, 0.1));
     this.highlight[1] = carrying || this.leafHeld === 1 || this.starHeld === 1 || (!!waiting && this.handIdxNear(1, hint, 0.1));
     this.handVisual.update(hands, dt, this.highlight);
@@ -631,6 +722,70 @@ export class LanternfolkSystem extends createSystem({}) {
     void dt;
   }
 
+  private liveObstacles: Obstacle[] = [];
+
+  /** Swing the branches (level 2) and keep their collision capsules current. */
+  private updateObstacles() {
+    if (!this.liveObstacles.length) this.liveObstacles = this.obstacles.map((o) => o.live);
+    const t = this.clock;
+    for (const o of this.obstacles) {
+      obstacleAt(o.plan, t, o.live.a, o.live.b);
+      const g = o.mesh.group;
+      const a = o.live.a;
+      const b = o.live.b;
+      g.position.set((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+      const len = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
+      g.scale.set(len, 1, 1);
+      g.rotation.set(0, Math.atan2(-(b.z - a.z), b.x - a.x), Math.atan2(b.y - a.y, Math.hypot(b.x - a.x, b.z - a.z)));
+      g.visible = this.level >= 1 || this.phase === 'transition';
+    }
+  }
+
+  /** Where the ghost hand should go for the spirit currently asking for help. */
+  private hintFrom = v3();
+  private hintTo = v3();
+  private hintIsLift = false;
+  private currentHint(): V3 | null {
+    const zone = this.zones[this.level];
+    const needer = zone?.folk.find((f) => f.help === 'bridge' || f.help === 'lift');
+    const seg = needer?.segment;
+    if (!seg || seg.kind === 'walk') return null;
+    if (seg.kind === 'bridge') {
+      lerpV3(this.hintFrom, seg.span.from, seg.span.to, 0.5);
+      this.hintFrom.y += 0.015;
+      this.hintIsLift = false;
+    } else {
+      copyV3(this.hintFrom, seg.from);
+      this.hintFrom.y += 0.01;
+      copyV3(this.hintTo, seg.to);
+      this.hintTo.y += 0.01;
+      this.hintIsLift = true;
+    }
+    return this.hintFrom;
+  }
+
+  /** Music follows the moment: tension while something fragile is in your hand. */
+  private updateMood(dt: number) {
+    void dt;
+    let tension = 0;
+    const zone = this.zones[this.level];
+    for (const f of zone?.folk ?? []) {
+      if (f.isCarried) tension = Math.max(tension, 0.45 + (1 - f.balance) * 0.55);
+      if (f.state === 'hover' || f.state === 'return') tension = Math.max(tension, 0.7);
+    }
+    if (this.level === 1 && zone?.folk.some((f) => f.state === 'ride')) {
+      // closer to a swinging branch → more suspense
+      for (const o of this.liveObstacles) {
+        const f = zone.folk[0];
+        const d = Math.hypot(f.position.x - (o.a.x + o.b.x) / 2, f.position.y - (o.a.y + o.b.y) / 2, f.position.z - (o.a.z + o.b.z) / 2);
+        tension = Math.max(tension, Math.min(1, 0.9 - d * 6));
+      }
+    }
+    if (this.phase === 'star') tension = Math.max(tension, this.starRider >= 0 || this.starHeld >= 0 ? 0.6 + (1 - this.starBalance) * 0.4 : 0.3);
+    if (this.phase === 'finale' || this.phase === 'ending' || this.phase === 'celebrate') tension = 0;
+    sound.setTension(tension);
+  }
+
   private updateFlow(dt: number) {
     const plan = LEVELS[this.level];
     const zone = this.zones[this.level];
@@ -640,19 +795,26 @@ export class LanternfolkSystem extends createSystem({}) {
           this.label.hide();
         } else if (this.level === 0) {
           this.titleTime += this.lastDt;
-          this.label.show(this.titleTime < 4 ? 'Lanternfolk' : plan.intro[0], plan.intro[1]);
+          if (this.titleTime < 4) this.label.show('Lanternfolk', `Chapter 1 · ${plan.name}`);
+          else this.label.show(plan.intro[0], plan.intro[1]);
         }
         else this.label.show(plan.intro[0], plan.intro[1]);
         this.positionLabel(plan.label);
         break;
       }
       case 'play': {
+        this.chapterTime += dt;
         const needer = zone.folk.find((f) => f.help);
         const sleeper = zone.folk.find((f) => !f.isAwake);
-        if (sleeper) {
+        if (this.level > 0 && this.chapterTime < 3.2) {
+          this.label.show(`Chapter ${plan.id}`, plan.name);
+        } else if (this.clock < this.encourageUntil) {
+          this.label.show(this.encourageText[0], this.encourageText[1]);
+        } else if (sleeper) {
           this.label.show(plan.intro[0], plan.intro[1]);
-        } else if (needer && needer.waitTime > 0.6) {
-          this.label.show(plan.help[0], plan.help[1]);
+        } else if (needer && needer.waitTime > 0.6 && needer.help) {
+          const t = needer.helpText ?? plan.help[needer.help];
+          this.label.show(t[0], t[1]);
         } else if (this.phaseTime > 1.5) {
           this.label.hide();
         }
@@ -660,14 +822,16 @@ export class LanternfolkSystem extends createSystem({}) {
         break;
       }
       case 'celebrate': {
-        this.label.show(['', 'The first light is home', 'Two lights shine', 'Every light is home'][this.level + 1] ?? 'Home', '');
+        this.label.show(['The first light is home', 'Two lights shine', 'Every light is home'][this.level] ?? 'Home', `Chapter ${plan.id} complete`);
         if (this.phaseTime > 3.2) {
           this.label.hide();
           if (this.level < LEVELS.length - 1) this.goToLevel(this.level + 1);
           else {
             this.star.group.visible = true;
-            this.motes.burst(STAR_START.x, STAR_START.y, STAR_START.z, 30, 0.03, 0.05);
+            this.starIslet.visible = true;
+            this.motes.burst(this.starHome.x, this.starHome.y, this.starHome.z, 30, 0.03, 0.05);
             sound.pickup();
+            sound.setTension(0.35);
             this.setPhase('star');
           }
         }
@@ -693,8 +857,10 @@ export class LanternfolkSystem extends createSystem({}) {
           this.zones.forEach((z) => (z.bloomTarget = 1));
           this.startFinaleChoreography();
         } else {
-          this.label.show('One last light', 'Pinch the star and set it atop the tree');
-          this.positionLabel(v3(STAR_START.x, 0.2, STAR_START.z));
+          if (this.clock < this.encourageUntil) this.label.show(this.encourageText[0], this.encourageText[1]);
+          else if (this.starRider >= 0 || this.starHeld >= 0) this.label.show('Up to the treetop', 'Steady… set the star in the glowing ring');
+          else this.label.show('One last light', 'Scoop the star onto your open palm');
+          this.positionLabel(v3(this.starHome.x * 0.6, 0.22, this.starHome.z * 0.6));
         }
         break;
       }
@@ -840,18 +1006,35 @@ export class LanternfolkSystem extends createSystem({}) {
     if (!this.star.group.visible) return;
     const hands = this.hands.hands;
     const g = this.star.group;
+    // The star's islet drifts in a slow loop: it comes closer, then wanders away again.
+    starIsletAt(LEVELS[2].star!, this.clock, this.starHome);
+    this.starIslet.position.set(this.starHome.x, this.starHome.y - 0.018, this.starHome.z);
     if (this.starPlaced) {
       copyV3(this.starPos, SOCKET);
       this.starPos.y += 0.01 + Math.sin(this.phaseTime * 1.5) * 0.004;
+    } else if (this.starRider >= 0) {
+      // Carried on an open palm: keep it level and calm, like the spirits.
+      const h = hands[this.starRider];
+      if (!h.present) {
+        this.dropStar('tracking');
+      } else {
+        this.starBalance = updateBalance(this.starBalance, h.tilt, h.speed, dt);
+        if (this.starBalance <= 0) {
+          this.dropStar('balance');
+        } else {
+          palmSurface(h, this.tmpV3);
+          this.tmpV3.y += 0.012;
+          lerpV3(this.starPos, this.starPos, this.tmpV3, Math.min(1, dt * 20));
+          if (canSnap(this.starPos, SOCKET, 0.08)) this.placeStar();
+        }
+      }
     } else if (this.starHeld >= 0) {
+      // Pinch also works (accessibility alternative to the palm).
       const h = hands[this.starHeld];
       if (!h.present || !h.pinching) {
         this.starHeld = -1;
-        if (canSnap(this.starPos, SOCKET, 0.08)) {
-          this.starPlaced = true;
-          sound.place();
-          this.motes.burst(SOCKET.x, SOCKET.y, SOCKET.z, 40, 0.05, 0.08);
-        } else {
+        if (canSnap(this.starPos, SOCKET, 0.08)) this.placeStar();
+        else {
           copyV3(this.dropFrom, this.starPos);
           this.starReturn = 0.0001;
         }
@@ -861,23 +1044,58 @@ export class LanternfolkSystem extends createSystem({}) {
     } else if (this.starReturn > 0) {
       this.starReturn += dt;
       const u = smoothstep(this.starReturn / 1.2);
-      lerpV3(this.starPos, this.dropFrom, STAR_START, u);
+      lerpV3(this.starPos, this.dropFrom, this.starHome, u);
       if (u >= 1) this.starReturn = 0;
     } else {
-      copyV3(this.starPos, STAR_START);
-      this.starPos.y += Math.sin(this.phaseTime * 2) * 0.005;
+      copyV3(this.starPos, this.starHome);
+      this.starPos.y += 0.006 + Math.sin(this.phaseTime * 2) * 0.004;
       if (this.phase === 'star') {
-        const h = grabbingHand(hands, this.starPos, 0.07);
-        if (h >= 0) {
-          this.starHeld = h;
+        const pinch = grabbingHand(hands, this.starPos, 0.07);
+        if (pinch >= 0) {
+          this.starHeld = pinch;
+          sound.pickup();
+        } else if (canBoard(this.starHome, hands, this.supTmp) && this.palmUnder(this.supTmp.hand, this.starHome) && hands[this.supTmp.hand].speed < 0.3) {
+          this.starRider = this.supTmp.hand;
+          this.starBalance = 1;
           sound.pickup();
         }
       }
     }
     g.position.set(this.starPos.x, this.starPos.y, this.starPos.z);
-    this.star.core.rotation.y += dt * 1.2;
+    this.star.core.rotation.y += dt * (this.starRider >= 0 ? 0.6 + (1 - this.starBalance) * 6 : 1.2);
+    const wob = this.starRider >= 0 ? (1 - this.starBalance) * 0.4 : 0;
+    this.star.core.rotation.z = Math.sin(this.clock * 10) * wob;
     const s = this.starPlaced ? 0.22 + Math.sin(this.phaseTime * 2) * 0.02 : 0.14;
     this.star.glow.scale.set(s, s, s);
+  }
+
+  private tmpV3 = v3();
+  private supTmp = { y: 0, hand: -1 };
+
+  /** The palm must be roughly under the star (not just a fingertip nearby). */
+  private palmUnder(hand: number, p: V3) {
+    const h = this.hands.hands[hand];
+    return !!h && h.present && Math.hypot(h.palm.x - p.x, h.palm.z - p.z) < 0.06;
+  }
+
+  private dropStar(reason: 'balance' | 'tracking') {
+    this.starRider = -1;
+    copyV3(this.dropFrom, this.starPos);
+    this.starReturn = 0.0001;
+    sound.slip(0);
+    this.rescued.forEach((r) => r.worry());
+    this.encourage(
+      reason === 'balance' ? ['It rolled away!', 'Keep your palm flat and rise slowly'] : ['Where did your hand go?', 'The star floated home. Try again'],
+      3,
+    );
+  }
+
+  private placeStar() {
+    this.starRider = -1;
+    this.starHeld = -1;
+    this.starPlaced = true;
+    sound.place();
+    this.motes.burst(SOCKET.x, SOCKET.y, SOCKET.z, 40, 0.05, 0.08);
   }
 
   /** Hints escalate gently: nothing for a moment, then a ring or a ghost hand. */
@@ -911,31 +1129,34 @@ export class LanternfolkSystem extends createSystem({}) {
             this.ring.rotation.set(-Math.PI / 2, 0, 0);
             this.ring.scale.setScalar(2.2 + 0.3 * Math.sin(time * 5));
           }
-        } else if (needer.help === 'bridge' || needer.help === 'lift') {
-          handTarget = this.handNear(plan.hint, 0.09) ? 0 : 0.55;
-          const from = plan.hint;
-          if (plan.hintTo) {
+        } else if ((needer.help === 'bridge' || needer.help === 'lift') && this.currentHint()) {
+          const from = this.hintFrom;
+          handTarget = this.handNear(from, 0.09) ? 0 : 0.55;
+          if (this.hintIsLift) {
+            const to = this.hintTo;
             const u = (time * 0.45) % 1;
             const e = smoothstep(u);
             this.handHint.position.set(
-              from.x + (plan.hintTo.x - from.x) * e,
-              from.y + (plan.hintTo.y - from.y) * e + Math.sin(e * Math.PI) * 0.03,
-              from.z + (plan.hintTo.z - from.z) * e,
+              from.x + (to.x - from.x) * e,
+              from.y + (to.y - from.y) * e + Math.sin(e * Math.PI) * 0.03,
+              from.z + (to.z - from.z) * e,
             );
             handTarget *= Math.sin(u * Math.PI);
           } else {
             this.handHint.position.set(from.x, from.y + Math.sin(time * 2) * 0.004, from.z);
           }
-          // Lay the ghost hand across the gap, fingers pointing sideways.
-          this.handHint.rotation.set(-Math.PI / 2, 0, plan.angle + Math.PI / 2);
+          // Lay the ghost hand across the gap (perpendicular to the path), palm up.
+          const seg = needer.segment;
+          const dir = seg && seg.kind === 'bridge' ? Math.atan2(seg.span.to.x - seg.span.from.x, seg.span.to.z - seg.span.from.z) : plan.angle;
+          this.handHint.rotation.set(-Math.PI / 2, 0, dir + Math.PI / 2);
         }
       }
-    } else if (this.phase === 'star' && this.starHeld < 0 && !this.starPlaced) {
+    } else if (this.phase === 'star' && this.starHeld < 0 && this.starRider < 0 && !this.starPlaced) {
       ringTarget = 0.9;
       this.ring.position.set(this.starPos.x, this.starPos.y, this.starPos.z);
       this.ring.lookAt(this.cameraLocal());
       this.ring.scale.setScalar(1.8 + 0.3 * Math.sin(time * 4));
-    } else if (this.phase === 'star' && this.starHeld >= 0) {
+    } else if (this.phase === 'star' && (this.starHeld >= 0 || this.starRider >= 0)) {
       ringTarget = 0.9;
       this.ring.position.set(SOCKET.x, SOCKET.y, SOCKET.z);
       this.ring.rotation.set(-Math.PI / 2, 0, 0);
@@ -1015,7 +1236,7 @@ export class LanternfolkSystem extends createSystem({}) {
     const all = this.zones.reduce((a, z) => a + z.bloom, 0) / this.zones.length;
     const centre = this.zones[0].mat.userData.centre as MeshLambertMaterial;
     centre.color.copy(DORMANT).lerp(ALIVE, 0.35 + 0.65 * all);
-    this.hemi.intensity = 1.35 + all * 0.25;
+    this.hemi.intensity = 1.35 + all * 0.25 - this.dimFor * 0.35; // a slip briefly dims the grove
     this.skyStars.starsMat.opacity = 0.9 - all * 0.3;
   }
 
@@ -1053,17 +1274,35 @@ export class LanternfolkSystem extends createSystem({}) {
         return self.zones.flatMap((z) =>
           z.folk.map((f) => {
             const w = self.toWorld(f.position);
-            return { state: f.state, help: f.help, x: w[0], y: w[1], z: w[2] };
+            return { state: f.state, help: f.help, emotion: f.emotion, seg: f.segmentIndex, slips: f.slips, balance: +f.balance.toFixed(2), x: w[0], y: w[1], z: w[2] };
           }),
         );
+      },
+      get star() {
+        return { rider: self.starRider, held: self.starHeld, placed: self.starPlaced, balance: +self.starBalance.toFixed(2) };
       },
       get targets() {
         const t: Record<string, [number, number, number]> = {};
         self.zones.forEach((z, i) => {
           z.folk.forEach((f, j) => (t[`folk${i + 1}${'ab'[j]}`] = self.toWorld(f.touchPoint)));
-          const plan = z.plan;
-          t[`hint${i + 1}`] = self.toWorld(plan.hint);
-          if (plan.hintTo) t[`hintTo${i + 1}`] = self.toWorld(plan.hintTo);
+          // Every bridge midpoint and lift pad, in route order: bridge1_0, lift2_0 / liftTo2_0 …
+          let nb = 0;
+          let nl = 0;
+          for (const seg of z.plan.folk[0].route) {
+            if (seg.kind === 'bridge') {
+              const m = v3();
+              lerpV3(m, seg.span.from, seg.span.to, 0.5);
+              m.y += 0.015;
+              t[`bridge${i + 1}_${nb++}`] = self.toWorld(m);
+            } else if (seg.kind === 'lift') {
+              t[`lift${i + 1}_${nl}`] = self.toWorld(seg.from);
+              t[`liftTo${i + 1}_${nl++}`] = self.toWorld(seg.to);
+            }
+          }
+        });
+        self.liveObstacles.forEach((o, k) => {
+          const m = v3((o.a.x + o.b.x) / 2, (o.a.y + o.b.y) / 2, (o.a.z + o.b.z) / 2);
+          t[`branch${k}`] = self.toWorld(m);
         });
         t.leaf = self.toWorld(self.leafPos);
         t.leafSlot = self.toWorld(LEVELS[2].leafSlot!);
@@ -1089,12 +1328,16 @@ export class LanternfolkSystem extends createSystem({}) {
           self.level = 2;
           self.leafPlaced = true;
           self.yaw = -LEVELS[2].angle;
+          self.applyAtmosphere(2, true);
           self.star.group.visible = true;
+          self.starIslet.visible = true;
           self.setPhase('star');
           return;
         }
         self.level = level;
         self.yaw = -LEVELS[level].angle;
+        self.applyAtmosphere(level, true);
+        self.chapterTime = 99; // skip the chapter card in tests
         self.setPhase('play');
       },
       restart() {
