@@ -1,45 +1,45 @@
-# IWSDK App
+# Lanternfolk
 
-This project uses `iwsdk.config.json` for declarative scene, asset, component,
-XR, and emulator configuration. Application systems remain explicit in
-`src/index.ts`.
+A hands-first, seated WebXR game for Meta Quest, built with Meta's Immersive Web SDK (IWSDK).
+Tiny lantern spirits walk across your palm to find their way home.
 
-```sh
+**Play:** https://lanternfolk.hayaix.tech, opened in Meta Quest Browser. Press Enter VR and put the controllers down.
+
+## Requirements
+Node 20.19+ (tested with 24.22) and npm. Python 3 is needed for the emulator playtest and the capture tools.
+
+## Run locally
+```bash
 npm install
-npm run dev
+npx iwsdk dev up --headless --allow-browser-automation   # dev server + emulator (IWER) browser
+npx iwsdk dev status                                     # local/network URLs
+```
+To try it on a headset on the same network, open the `network` URL shown by `dev status` and accept the local certificate.
+
+## Test
+```bash
+npm run typecheck
+npm test                         # 20 Vitest unit tests (pure gameplay rules)
+python3 tools/playtest.py        # 19-check end-to-end run with emulated hands (needs the dev server)
 ```
 
-Use the Runtime and Editor controls in the managed browser to switch between
-the running experience and its authored scene.
+## Build and deploy
+```bash
+npm run build                    # static site in dist/
+./tools/deploy.sh                # typecheck + tests + build + S3 sync + CloudFront invalidation (AWS profile hayaitech)
+python3 tools/build_pages.py     # regenerate about/support/privacy/terms/credits pages in public/
+```
 
-## Starter content
+## Code map
+| Path | Purpose |
+|---|---|
+| `src/game/logic.ts` | Pure, unit-tested rules: hand support, bridge, lift, palm surface, pinch, snap |
+| `src/game/hands.ts` | WebXR hand joints → island-local samples every frame |
+| `src/game/folk.ts` | Spirit state machine and procedural "acting" |
+| `src/game/levels.ts` | Level layouts |
+| `src/game/game.ts` | Main system: placement, flow, hints, community, finale |
+| `src/game/scenery.ts`, `handVisual.ts` | Procedural meshes, glow hand |
+| `src/game/audio.ts`, `music.ts` | Synthesized SFX and generative score |
+| `tools/` | Emulator playtest, footage capture (`film.py`, `record.mjs`, `render_audio.mjs`), deploy, page generator |
 
-The robot and welcome panel are small examples of authored scene content plus
-runtime systems. The robot turns toward the player's head and plays a sound
-when pressed. To remove the robot, delete its scene node, its `RobotSystem`
-registration from `src/index.ts` or `src/index.js`, and its `Robot` registration
-from `src/components.ts` or `src/components.js`; you can then delete the unused
-robot component and system files. To remove the welcome panel, delete its scene
-node and its `PanelSystem` registration from the application entry point.
-
-The robot stands on the second of three numbered stations. The first holds dark
-pieces you can grab and move, and the third holds a ring you can spin in place.
-The studio props (the plinths and the dark pieces, plus the floor and stage in VR
-and Desktop 3D) are built in code in `src/scene-assets/studio.scene-asset.ts` or
-`.js`. The VR and Desktop 3D background furniture is built the same way in
-`src/scene-assets/decor.scene-asset.ts` or `.js`, so the starter downloads no
-extra models. To remove any of them, delete their scene nodes and their entries
-in `src/assets.ts` or `src/assets.js`, then delete the files you no longer use.
-The station labels are `public/ui/label-*.uikitml`.
-
-The rest of the look is built-in components in the scene, which you can edit in
-the editor without code. The soft light on every object is the scene root's
-`IBLGradient` (select the Level Root to edit it), and the soft shadows under
-each object are `ContactShadow` nodes. In VR and Desktop 3D, the sky is the
-scene root's `DomeGradient` (its colors, tilt and dither are also on the Level
-Root), and the floor fades into it through the `DomeFade` on the floor node. AR
-projects have no sky or floor, so passthrough stays visible, and a
-`ShadowCatcher` node grounds the stations.
-
-- Minimal scene walkthrough: https://iwsdk.dev/guides/01b-minimal-scene.html
-- XR-enabled projects — IWER emulator controls: https://iwsdk.dev/guides/02-testing-experience.html#iwer-controls
+All art and audio are generated in code. See `public/credits.html` for third-party licenses.
