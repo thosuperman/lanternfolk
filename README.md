@@ -19,8 +19,8 @@ To try it on a headset on the same network, open the `network` URL shown by `dev
 ## Test
 ```bash
 npm run typecheck
-npm test                         # 20 Vitest unit tests (pure gameplay rules)
-python3 tools/playtest.py        # 19-check end-to-end run with emulated hands (needs the dev server)
+npm test                         # 29 Vitest unit tests (pure gameplay rules)
+python3 tools/playtest.py        # 22-check end-to-end run incl. failures (needs the dev server)
 ```
 
 ## Build and deploy
