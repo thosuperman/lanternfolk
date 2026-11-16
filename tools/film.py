@@ -116,6 +116,13 @@ def take_a(marks, t):
     time.sleep(6.0)  # celebration, chapter complete, the grove turns
 
 
+def away_fingers(pad, branch):
+    """Point the fingers away from a branch so the palm centre sits on the far side."""
+    dx, dz = pad[0] - branch[0], pad[2] - branch[2]
+    n = (dx * dx + dz * dz) ** 0.5 or 1.0
+    return {"fingers": [dx / n, 0, dz / n], "palm": "up"}
+
+
 def take_b(marks, t):
     """Chapter 2: wake, board, bump a swinging branch (slip), then lift up-and-over twice."""
     lean_in(1.2)
@@ -134,7 +141,7 @@ def take_b(marks, t):
     seq([palm(t["lift2_0"], dy=-0.005, label="offer2"), {"label": "hold", "duration": 1.0}] + detour(t["lift2_0"], t["liftTo2_0"], t["branchRest0"]))
     hide_hand("hand-right")
     time.sleep(2.2)
-    seq([palm(t["lift2_1"], dy=-0.005, label="offer3"), {"label": "hold", "duration": 1.0}] + detour(t["lift2_1"], t["liftTo2_1"], t["branchRest1"], up=0.1))
+    seq([palm(t["lift2_1"], dy=-0.005, label="offer3", orientation=away_fingers(t["lift2_1"], t["branchRest1"])), {"label": "hold", "duration": 1.0}] + detour(t["lift2_1"], t["liftTo2_1"], t["branchRest1"], up=0.14))
     hide_hand("hand-right")
     look([0.0, CENTRE[1] + 0.06, -0.6], 1.5)
     time.sleep(6.5)

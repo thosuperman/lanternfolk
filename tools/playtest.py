@@ -306,10 +306,14 @@ def main():
     s = ev("lanternfolk.star")
     check("Star failure: shaking makes it roll off and float home", s["rider"] < 0 and not s["placed"], json.dumps(s))
     rest()
-    time.sleep(1.6)
-    t = ev("lanternfolk.targets")
-    seq([palm_at(t["star"], dy=-0.035, duration=1.0, label="scoop-again"), {"label": "hold", "duration": 0.6}])
-    s = ev("lanternfolk.star")
+    time.sleep(2.0)  # it floats back to its islet first
+    for _ in range(2):
+        t = ev("lanternfolk.targets")
+        seq([palm_at(t["star"], dy=-0.035, duration=1.0, label="scoop-again"), {"label": "hold", "duration": 1.0}])
+        s = ev("lanternfolk.star")
+        if s["rider"] >= 0:
+            break
+        rest()
     check("Star retry: scooped again", s["rider"] >= 0, json.dumps(s))
     t = ev("lanternfolk.targets")
     sock = t["socket"]

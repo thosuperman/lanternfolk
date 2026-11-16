@@ -589,7 +589,8 @@ export class Folk {
   }
 
   private checkObstacles(obstacles: readonly Obstacle[]) {
-    if (this.state !== 'ride' && this.state !== 'hop-on') return;
+    // A moment of grace right after climbing aboard.
+    if (this.state !== 'ride' || this.stateTime < 0.6) return;
     this.probe.x = this.pos.x;
     this.probe.y = this.pos.y + 0.02;
     this.probe.z = this.pos.z;
