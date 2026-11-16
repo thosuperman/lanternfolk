@@ -85,7 +85,7 @@ export class HandVisual {
       pearls.visible = bones.visible = vis;
       if (!vis || !hand.present) continue;
       const j = hand.joints;
-      const glow = highlight[h] ? 1.6 : 1;
+      const glow = highlight[h] ? 1.25 : 1;
       (pearls.material as MeshBasicMaterial).opacity = 0.5 * this.alpha[h] * glow;
       (bones.material as MeshBasicMaterial).opacity = 0.42 * this.alpha[h] * glow;
       for (let i = 0; i < 25; i++) {

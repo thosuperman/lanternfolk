@@ -134,11 +134,11 @@ describe('palmSurface', () => {
     set(16, -0.012, -0.093);
     set(21, -0.033, -0.085);
     const p = palmSurface(h, v3());
-    expect(p.y).toBeCloseTo(0.112, 3);
+    expect(p.y).toBeCloseTo(0.12, 3);
     // mirrored (palm facing down): normal flips, still stands above
     set(6, -0.035, -0.09);
     set(21, 0.033, -0.085);
-    expect(palmSurface(h, v3()).y).toBeCloseTo(0.112, 3);
+    expect(palmSurface(h, v3()).y).toBeCloseTo(0.12, 3);
   });
 });
 

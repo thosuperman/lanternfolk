@@ -104,7 +104,7 @@ def take_b(marks, t):
     marks["lift"] = time.time()
     seq([
         {"label": "in", "position": P(h, dx=0.12, dy=0.06, dz=0.1), "anchor": "grasp", "poseId": "flat", "orientation": FLAT, "duration": 1.0},
-        {"label": "offer", "position": P(h, dy=0.02), "anchor": "grasp", "orientation": FLAT, "duration": 0.8},
+        {"label": "offer", "position": P(h, dy=0.05), "anchor": "grasp", "orientation": FLAT, "duration": 0.8},
         {"label": "wait", "duration": 1.2},
     ])
     seq([

@@ -202,7 +202,7 @@ def main():
         check("L2 folk asks for a lift", True)
         h, h2 = t["hint2"], t["hintTo2"]
         seq([
-            {"label": "offer", "position": P(h, dy=0.02), "anchor": "grasp", "poseId": "flat",
+            {"label": "offer", "position": P(h, dy=0.05), "anchor": "grasp", "poseId": "flat",
              "orientation": {"fingers": [-1, 0, 0], "palm": "up"}, "duration": 1.0},
             {"label": "wait", "duration": 1.0},
         ])
@@ -215,7 +215,7 @@ def main():
         cli("xr", "set-connected", payload={"device": "hand-right", "connected": True})
         s = wait_for(lambda s: s["folk"][1]["state"] in ("wait", "hop-on", "ride"), 6, "waiting again")
         if s["folk"][1]["state"] == "wait":
-          seq([{"label": "offer-again", "position": P(h, dy=0.02), "anchor": "grasp", "poseId": "flat",
+          seq([{"label": "offer-again", "position": P(h, dy=0.05), "anchor": "grasp", "poseId": "flat",
               "orientation": {"fingers": [-1, 0, 0], "palm": "up"}, "duration": 1.0}, {"label": "wait", "duration": 1.2}])
         s = wait_for(lambda s: s["folk"][1]["state"] in ("hop-on", "ride"), 5, "re-board")
         check("L2 tracking reacquired: spirit boards again", True)

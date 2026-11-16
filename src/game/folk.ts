@@ -341,6 +341,7 @@ export class Folk {
         copyV3(this.hopFrom, this.pos);
         // Hop onto the middle of the palm (whichever way it faces).
         palmSurface(hands[this.rideHand], this.hopTo);
+        this.keepAboveGround(this.hopTo, seg.from);
         this.help = null;
         this.events.hop(this);
         this.set('hop-on');
@@ -448,6 +449,7 @@ export class Folk {
     this.waitTime = 0;
     this.help = null;
     palmSurface(hand, this.hopTo);
+    this.keepAboveGround(this.hopTo, seg.from);
     const k = Math.min(1, dt * 22);
     lerpV3(this.pos, this.pos, this.hopTo, k);
     this.tickSteps(dt, false);
@@ -457,6 +459,11 @@ export class Folk {
       this.events.hop(this);
       this.set('hop-off');
     }
+  }
+
+  /** A rider never sinks into the island it is leaving (hands can pass through scenery). */
+  private keepAboveGround(p: V3, pad: V3) {
+    if (distXZ(p, pad) < 0.075 && p.y < pad.y) p.y = pad.y;
   }
 
   private tickSteps(dt: number, audible: boolean) {

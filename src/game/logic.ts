@@ -289,7 +289,7 @@ export function palmSurface(hand: HandSample, out: V3): V3 {
     ny = -ny;
     nz = -nz;
   }
-  const lift = 0.012; // about half a hand's thickness
+  const lift = 0.02; // half a hand's thickness plus the drawn joint radius
   out.x = x + nx * lift;
   out.y = y + ny * lift;
   out.z = z + nz * lift;
