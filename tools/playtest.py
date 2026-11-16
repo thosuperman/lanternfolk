@@ -156,21 +156,30 @@ def main():
         shot(sp("02_wait_bridge.png"))
         h = t["hint1"]
         flat = {"fingers": [-1, 0, 0], "palm": "up"}
-        # Robustness, deterministic: an in-page watcher waits until the spirit is on the hand,
-        # then simulates tracking loss in the game's input layer and records what follows.
-        seq([{"label": "bridge", "position": P(h, dy=0.0), "anchor": "grasp", "poseId": "flat", "orientation": flat, "duration": 1.0}])
-        trace = ev("""(async () => {
-          const st = () => lanternfolk.folk[0].state;
+        # Robustness, deterministic: an in-page watcher (started *before* the hand arrives) waits
+        # until the spirit steps onto the hand, then simulates tracking loss in the game's input
+        # layer and records what follows. XR CLI commands run alongside browser scripts.
+        import threading
+        box = {}
+        watcher = threading.Thread(target=lambda: box.update(trace=ev("""(async () => {
+          const F = () => lanternfolk.folk[0];
           const t0 = performance.now();
-          while (st() !== 'bridge' && performance.now() - t0 < 6000) await new Promise(r => setTimeout(r, 16));
-          const onHand = st();
-          await new Promise(r => setTimeout(r, 120));
+          while (F().state !== 'bridge' && performance.now() - t0 < 12000) await new Promise(r => setTimeout(r, 10));
+          const onHand = F().state;
+          // wait until it is ~3 cm out over the gap (past the solid edge, far from the other side)
+          const inner = __lf.zones[0].folk[0];
+          while (inner.s < 0.03 && performance.now() - t0 < 15000) await new Promise(r => setTimeout(r, 5));
           lanternfolk.simulateTrackingLoss(5);
           await new Promise(r => setTimeout(r, 700));
-          const during = st();
-          await new Promise(r => setTimeout(r, 3600));
-          return [onHand, during, st()];
-        })()""")
+          const during = F().state;
+          await new Promise(r => setTimeout(r, 3800));
+          return [onHand, during, F().state];
+        })()""")))
+        watcher.start()
+        time.sleep(2.0)  # let the watcher start before the hand moves
+        seq([{"label": "bridge", "position": P(h, dy=0.0), "anchor": "grasp", "poseId": "flat", "orientation": flat, "duration": 1.0}])
+        watcher.join(timeout=30)
+        trace = box.get("trace", ["?", "?", "?"])
         check("L1 spirit steps onto the hand after a short hesitation", trace[0] == "bridge", trace[0])
         check("L1 tracking lost mid-crossing: spirit hovers instead of falling", trace[1] == "hover", trace[1])
         check("L1 ...then drifts back to the edge and waits (progress kept)", trace[2] == "wait", trace[2])
